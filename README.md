@@ -1,6 +1,6 @@
 # UOU_Capstone_Design_AI
 ### 유의사항
-- Langraph와 Langchain 패키지가 필요
+- Langgraph와 Langchain(차후) 패키지가 필요
 - API키는 따로 카카오톡 요청 (현재 하드코딩 방식으로 구성됨)
 - Gemini 사용됨
 ### 필요 패키지
