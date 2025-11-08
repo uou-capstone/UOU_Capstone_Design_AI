@@ -1,13 +1,14 @@
 import os
+from dotenv import load_dotenv
 from typing import TypedDict
 from google import genai
 from google.genai import types
 import pathlib
 from langgraph.graph import StateGraph, START, END
 
-# API Key 설정
-GEMINI_API_KEY = ""
-os.environ["GEMINI_API_KEY"] = GEMINI_API_KEY
+# API Key 설정 (.env에서 로드)
+load_dotenv()
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
 
 
 class LectureState(TypedDict):
@@ -112,8 +113,8 @@ def main(chapter_title: str, pdf_path: str) -> dict:
 # 테스트용 코드 (직접 실행하지 않는 이상 수행 X)
 if __name__ == "__main__":
     result = main(
-        chapter_title="소프트웨어 명세화",
-        pdf_path="/Users/jhkim/Desktop/Edu_Agent/component/02-SW-Process/소프트웨어 명세화.pdf"
+        chapter_title="DQN 핵심 개념",
+        pdf_path=r"C:\\Users\\goril\\Desktop\\Capstone\\Capstone_BE\\ai-service\\uploads\\ch6_DQN_(Deep_Q_learning).pdf"
     )
     
     print(f"챕터 제목: {list(result.keys())[0]}")

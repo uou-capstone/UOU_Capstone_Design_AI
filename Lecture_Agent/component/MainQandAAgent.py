@@ -1,4 +1,5 @@
 import os
+from dotenv import load_dotenv
 from typing import TypedDict
 from google import genai
 from google.genai import types
@@ -6,9 +7,9 @@ import pathlib
 from langgraph.graph import StateGraph, START, END
 import ast
 
-# API Key 설정
-GEMINI_API_KEY = ""
-os.environ["GEMINI_API_KEY"] = GEMINI_API_KEY
+# API Key 설정 (.env에서 로드)
+load_dotenv()
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
 
 
 class QAState(TypedDict):
@@ -540,9 +541,9 @@ current_concept: {current_concept}
         print(output)
         print("\n" + "="*50)
         
-        # 사용자 답변 받기
-        user_answer = input("답변을 입력하세요: ")
-        print("="*50 + "\n")
+        # 서버 환경 비대화형 동작: 입력 대기 대신 초기 state의 user_answer 사용
+        user_answer = state["user_answer"]
+        # print("="*50 + "\n")
         
         # 답변 평가
         eval_prompt = f"""[Question]: {output}

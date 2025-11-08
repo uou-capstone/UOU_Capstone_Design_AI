@@ -1,4 +1,5 @@
 import os
+from dotenv import load_dotenv
 import json
 import pathlib
 from typing import TypedDict, Dict, Any, List, Tuple
@@ -7,8 +8,8 @@ from google.genai import types
 from PyPDF2 import PdfReader, PdfWriter
 from langgraph.graph import StateGraph, END
 
-GEMINI_API_KEY = ""
-os.environ["GEMINI_API_KEY"] = GEMINI_API_KEY
+load_dotenv()
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
 
 
 class PDFWorkflowState(TypedDict):
@@ -140,12 +141,6 @@ def create_workflow():
 def main(pdf: str) -> List[Tuple[str, str]]:
     """
     PDF 파일을 분석하고 챕터별로 분할
-    
-    Args:
-        pdf: 분석할 PDF 파일의 경로
-    
-    Returns:
-        List[Tuple[str, str]]: [(챕터 title, PDF 경로), ...]
     """
     app = create_workflow()
     
@@ -169,3 +164,5 @@ def main(pdf: str) -> List[Tuple[str, str]]:
         output_list.append((chapter_title, pdf_path))
     
     return output_list
+
+

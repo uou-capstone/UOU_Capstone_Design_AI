@@ -3,9 +3,11 @@ import asyncio
 import time
 import re
 from typing import List, Tuple, Dict
-from component.PdfAnalyisis import main as pdf_analysis_main
-from component.MainLectureAgent import main as lecture_agent_main
-from component.MainQandAAgent import main as qa_agent_main
+from ai_agent import PdfAnalysis, MainLectureAgent, MainQandAAgent
+
+pdf_analysis_main = PdfAnalysis.main
+lecture_agent_main = MainLectureAgent.main
+qa_agent_main = MainQandAAgent.main
 
 
 def print_streaming(text: str, delay: float = 0.1):
