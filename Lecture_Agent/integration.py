@@ -2,7 +2,7 @@ import sys
 import asyncio
 import time
 import re
-from typing import List, Tuple, Dict
+from typing import List, Tuple, Dict, Any
 from ai_agent import PdfAnalysis, MainLectureAgent, MainQandAAgent
 
 pdf_analysis_main = PdfAnalysis.main
@@ -39,6 +39,49 @@ def extract_questions(text: str) -> List[Tuple[int, int, str]]:
         questions.append((start_pos, end_pos, question_content))
     
     return questions
+
+
+def build_segments_from_explanation(
+    explanation: str,
+    prefix: str = ""
+) -> Tuple[List[Dict[str, Any]], Dict[str, Dict[str, Any]]]:
+    """
+    강의 설명문을 스크립트/질문 세그먼트로 분리한다.
+    """
+    questions = extract_questions(explanation)
+    segments: List[Dict[str, Any]] = []
+    question_meta: Dict[str, Dict[str, Any]] = {}
+
+    if not questions:
+        stripped = explanation.strip()
+        if stripped:
+            segments.append({"type": "script", "content": stripped})
+        return segments, question_meta
+
+    current_pos = 0
+    for idx, (start_pos, end_pos, question_content) in enumerate(questions):
+        before_question = explanation[current_pos:start_pos]
+        if before_question.strip():
+            segments.append({"type": "script", "content": before_question.strip()})
+
+        question_id = f"{prefix}q-{idx}" if prefix else f"q-{idx}"
+        cleaned_question = question_content.strip()
+        segments.append({
+            "type": "question",
+            "questionId": question_id,
+            "question": cleaned_question
+        })
+        question_meta[question_id] = {
+            "question": cleaned_question,
+            "questionIndex": idx
+        }
+        current_pos = end_pos
+
+    remaining = explanation[current_pos:]
+    if remaining.strip():
+        segments.append({"type": "script", "content": remaining.strip()})
+
+    return segments, question_meta
 
 
 def process_explanation_with_qa(explanation: str, chapter_title: str, pdf_path: str):
@@ -108,20 +151,67 @@ async def run_all_lecture_agents(chapters_info: List[Tuple[str, str]]) -> List[D
     return results
 
 
-def main(pdf_path: str):
+def prepare_lecture_content(pdf_path: str) -> Dict[str, Any]:
+    """
+    질문 인터랙션을 지원하기 위해 챕터별 스크립트/질문 구조를 생성한다.
+    """
+    chapters_info = pdf_analysis_main(pdf_path)
+    lecture_results = asyncio.run(run_all_lecture_agents(chapters_info))
+
+    structured_chapters = []
+    for chapter_idx, ((chapter_title, chapter_pdf), lecture_dict) in enumerate(zip(chapters_info, lecture_results)):
+        explanation = lecture_dict.get(chapter_title, "")
+        segments, question_meta = build_segments_from_explanation(
+            explanation,
+            prefix=f"c{chapter_idx}-"
+        )
+        structured_chapters.append({
+            "chapterTitle": chapter_title,
+            "pdfPath": chapter_pdf,
+            "segments": segments,
+            "questions": question_meta
+        })
+
+    return {
+        "chapters": structured_chapters
+    }
+
+
+def generate_supplementary_explanation(question: str, answer: str, pdf_path: str) -> str:
+    """
+    사용자 답변을 받아 Q&A 에이전트를 실행하고 보충 설명을 반환한다.
+    """
+    return qa_agent_main([
+        (question, answer),
+        pdf_path
+    ])
+
+
+def main(pdf_path: str, skip_qa: bool = False):
     """
     통합 에이전트 시스템의 메인 함수
     
     Args:
         pdf_path (str): 분석할 PDF 파일의 경로
+        skip_qa (bool): Q&A 처리 건너뛰기 (API 호출 시 True)
+    
+    Returns:
+        Tuple[List[Tuple[str, str]], List[Dict[str, str]]]: (chapters_info, lecture_results)
     """
+    import traceback
+    
     print("="*60)
     print("교육 에이전트 시스템을 시작합니다")
     print("="*60 + "\n")
     
     # 1. PDF 분석 및 챕터별 분할
     print("📄 PDF 파일을 분석하고 챕터별로 분할하고 있습니다...\n")
-    chapters_info = pdf_analysis_main(pdf_path)
+    try:
+        chapters_info = pdf_analysis_main(pdf_path)
+    except Exception as e:
+        print(f"[ERROR] PDF 분석 중 에러 발생: {type(e).__name__}: {str(e)}")
+        traceback.print_exc()
+        raise
     
     print(f"총 {len(chapters_info)}개의 챕터를 발견했습니다.\n")
     for i, (title, path) in enumerate(chapters_info, 1):
@@ -135,28 +225,33 @@ def main(pdf_path: str):
     print("모든 강의 설명 생성이 완료되었습니다.\n")
     print("="*60 + "\n")
     
-    # 3. 순서대로 강의 진행
-    for i, ((chapter_title, pdf_path), lecture_dict) in enumerate(zip(chapters_info, lecture_results), 1):
-        print("\n" + "="*60)
-        print(f"📚 Chapter {i}: {chapter_title}")
-        print("="*60 + "\n")
-        
-        explanation = lecture_dict[chapter_title]
-        
-        # 설명문을 처리하면서 질문이 나오면 Q&A 진행
-        process_explanation_with_qa(explanation, chapter_title, pdf_path)
-        
-        # 다음 챕터로 넘어가기 전 구분선
-        if i < len(chapters_info):
+    # 3. Q&A 처리 (skip_qa가 False인 경우에만)
+    if not skip_qa:
+        # 순서대로 강의 진행
+        for i, ((chapter_title, pdf_path), lecture_dict) in enumerate(zip(chapters_info, lecture_results), 1):
             print("\n" + "="*60)
-            print("다음 챕터로 이동합니다...")
+            print(f"📚 Chapter {i}: {chapter_title}")
             print("="*60 + "\n")
-            time.sleep(1)
+            
+            explanation = lecture_dict[chapter_title]
+            
+            # 설명문을 처리하면서 질문이 나오면 Q&A 진행
+            process_explanation_with_qa(explanation, chapter_title, pdf_path)
+            
+            # 다음 챕터로 넘어가기 전 구분선
+            if i < len(chapters_info):
+                print("\n" + "="*60)
+                print("다음 챕터로 이동합니다...")
+                print("="*60 + "\n")
+                time.sleep(1)
+        
+        # 4. 모든 강의 완료
+        print("\n" + "="*60)
+        print("모든 강의가 완료되었습니다!")
+        print("="*60)
     
-    # 4. 모든 강의 완료
-    print("\n" + "="*60)
-    print("모든 강의가 완료되었습니다!")
-    print("="*60)
+    # 결과 반환 (API 호출 시 사용)
+    return chapters_info, lecture_results
 
 
 if __name__ == "__main__":
