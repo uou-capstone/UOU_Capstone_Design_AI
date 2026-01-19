@@ -1,0 +1,19 @@
+{
+    "type": "object",
+    "properties": {
+      "is_valid": {
+        "type": "boolean",
+        "description": "사용자 입력이 안전하고 주제에 부합하면 true, 욕설이나 주제 이탈 등 문제가 있으면 false."
+      },
+      "reason": {
+        "type": "string",
+        "description": "is_valid가 false일 경우, 사용자에게 전달할 경고 메시지. true일 경우 null 또는 빈 문자열."
+      },
+      "violation_type": {
+        "type": "string",
+        "enum": ["None", "Profanity", "Off_Topic", "Nonsense"],
+        "description": "위반 유형 태그"
+      }
+    },
+    "required": ["is_valid", "reason"]
+  }

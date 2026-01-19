@@ -1,0 +1,15 @@
+{
+    "type": "object",
+    "properties": {
+      "argument": {
+        "type": "string",
+        "description": "사용자의 주장을 반박하거나 허점을 찌르는 AI의 발언 텍스트."
+      },
+      "attack_tactic": {
+        "type": "string",
+        "enum": ["Logic_Error_Point", "Counter_Example", "Deep_Inquiry", "Sarcastic_Refutation"],
+        "description": "사용된 반박 전략"
+      }
+    },
+    "required": ["argument"]
+  }
