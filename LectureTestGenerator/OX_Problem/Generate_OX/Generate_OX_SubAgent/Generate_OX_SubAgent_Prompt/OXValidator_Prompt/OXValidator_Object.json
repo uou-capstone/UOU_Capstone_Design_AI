@@ -1,0 +1,34 @@
+{
+    "type": "object",
+    "properties": {
+      "is_valid": {
+        "type": "boolean",
+        "description": "생성된 모든 OX 문제가 강의 자료의 사실(Fact)과 일치하며, 사용자 프로필(Guideline)에 부합하는지 여부. (True면 통과, False면 수정 필요)"
+      },
+      "feedback_message": {
+        "type": "array",
+        "description": "검증 실패 시 반환되는 수정 지침 리스트. 통과(True) 시 빈 배열([]) 반환.",
+        "items": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "integer",
+              "description": "오류가 발견된 문제의 고유 식별 번호 (Writer가 이 ID를 식별하여 해당 문제만 수정함)"
+            },
+            "message": {
+              "type": "string",
+              "description": "해당 문제의 구체적인 오류 원인(정답 오류, 해설 오류, 스타일 위반 등) 및 수정 가이드"
+            }
+          },
+          "required": [
+            "id",
+            "message"
+          ]
+        }
+      }
+    },
+    "required": [
+      "is_valid",
+      "feedback_message"
+    ]
+  }
