@@ -1,0 +1,61 @@
+{
+    "type": "object",
+    "properties": {
+      "session_meta": {
+        "type": "object",
+        "properties": {
+          "exam_type": {
+            "type": "string",
+            "enum": ["Flash_Card", "OX_Quiz", "5_Choice_MCQ", "Short_Answer", "Discussion", "Mixed_Type"],
+            "description": "진행한 시험의 유형"
+          },
+          "source_material": {
+            "type": "string",
+            "description": "시험 출제의 바탕이 된 강의 자료 제목 (예: Lec9. V&V)"
+          },
+          "timestamp": {
+            "type": "string",
+            "format": "date-time",
+            "description": "시험 종료 시간 (ISO 8601 포맷)"
+          }
+        },
+        "required": ["exam_type", "source_material", "timestamp"]
+      },
+      "evaluation_items": {
+        "type": "array",
+        "description": "개별 문제에 대한 상세 평가 리스트",
+        "items": {
+          "type": "object",
+          "properties": {
+            "question_id": {
+              "type": "integer",
+              "description": "문제 번호"
+            },
+            "result_status": {
+              "type": "string",
+              "enum": ["Correct", "Incorrect", "Partial_Correct"],
+              "description": "정답 여부 (부분 점수 포함)"
+            },
+            "question_content": {
+              "type": "string",
+              "description": "문제의 원본 텍스트"
+            },
+            "user_response": {
+              "type": "string",
+              "description": "사용자가 제출한 답안 내용. 객관식은 '선택한 보기'를, 주관식/서술형은 '작성한 답변 원문 또는 요약'을 기재함."
+            },
+            "related_topic": {
+              "type": "string",
+              "description": "해당 문제가 평가하고자 했던 핵심 주제/개념"
+            },
+            "feedback_message": {
+              "type": "string",
+              "description": "채점 기준에 근거하여, 맞았으면 무엇을 잘 알았는지, 틀렸으면 어떤 개념이 부족했는지 설명하는 한 문장 피드백"
+            }
+          },
+          "required": ["question_id", "result_status", "question_content", "user_response", "related_topic", "feedback_message"]
+        }
+      }
+    },
+    "required": ["session_meta", "evaluation_items"]
+  }

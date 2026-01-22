@@ -1,0 +1,48 @@
+{
+    "type": "object",
+    "description": "생성된 플래시 카드 세트의 구조를 정의하는 객체",
+    "properties": {
+      "flash_cards": {
+        "type": "array",
+        "description": "생성된 개별 플래시 카드 아이템들의 리스트",
+        "items": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "integer",
+              "description": "카드의 고유 번호 또는 순번"
+            },
+            "front_content": {
+              "type": "string",
+              "description": "앞면에 적힐 내용. 개념에 대한 정의, 설명, 혹은 퀴즈 형태의 질문 (사용자가 보고 유추해야 할 내용)"
+            },
+            "back_content": {
+              "type": "string",
+              "description": "뒷면에 적힐 내용. 앞면의 설명이 가리키는 핵심 용어, 개념명, 혹은 정답"
+            },
+            "category_tag": {
+              "type": "string",
+              "description": "해당 카드가 다루는 세부 주제나 키워드 태그 (학습 편의를 위한 메타 정보)"
+            }
+          },
+          "required": [
+            "id",
+            "front_content",
+            "back_content"
+          ],
+          "propertyOrdering": [
+            "id",
+            "front_content",
+            "back_content",
+            "category_tag"
+          ]
+        }
+      }
+    },
+    "required": [
+      "flash_cards"
+    ],
+    "propertyOrdering": [
+      "flash_cards"
+    ]
+  }
