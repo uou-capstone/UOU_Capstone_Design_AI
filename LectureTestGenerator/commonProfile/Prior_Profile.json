@@ -1,0 +1,125 @@
+{
+    "type": "object",
+    "properties": {
+      "learning_goal": {
+        "type": "object",
+        "properties": {
+          "focus_areas": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "학습자가 집중적으로 학습하고자 하는 핵심 키워드 리스트"
+          },
+          "target_depth": {
+            "type": "string",
+            "enum": [
+              "Concept",
+              "Application",
+              "Derivation",
+              "Deep Understanding"
+            ],
+            "description": "학습 목표 이해 수준 (개념 < 응용 < 유도 < 심층 이해)"
+          },
+          "question_modality": {
+            "type": "string",
+            "enum": [
+              "Mathematical",
+              "Theoretical",
+              "Balance"
+            ],
+            "description": "문제 출제 스타일 (수식/구현 위주, 개념/이론 위주, 혹은 균형)"
+          }
+        },
+        "required": [
+          "focus_areas",
+          "target_depth",
+          "question_modality"
+        ]
+      },
+      "user_status": {
+        "type": "object",
+        "properties": {
+          "proficiency_level": {
+            "type": "string",
+            "enum": [
+              "Beginner",
+              "Intermediate",
+              "Advanced"
+            ],
+            "description": "사용자의 현재 지식 수준"
+          },
+          "weakness_focus": {
+            "type": "boolean",
+            "description": "True일 경우, 사용자의 오답 노트나 취약점을 기반으로 문제를 생성함"
+          }
+        },
+        "required": [
+          "proficiency_level",
+          "weakness_focus"
+        ]
+      },
+      "interaction_style": {
+        "type": "object",
+        "properties": {
+          "language_preference": {
+            "type": "string",
+            "enum": [
+              "Korean_with_English_Terms",
+              "Korean_with_Korean_Terms",
+              "Only_English"
+            ],
+            "description": "용어 및 해설의 언어 표기 방식 (CS 전공자는 영문 용어 혼용 선호)"
+          },
+          "scenario_based": {
+            "type": "boolean",
+            "description": "True일 경우, 단순 정의보다는 구체적인 상황이나 예시를 부여하여 질문함"
+          }
+        },
+        "required": [
+          "language_preference",
+          "scenario_based"
+        ]
+      },
+      "feedback_preference": {
+        "type": "object",
+        "properties": {
+          "strictness": {
+            "type": "string",
+            "enum": [
+              "Strict",
+              "Lenient"
+            ],
+            "description": "채점 기준의 엄격도 (Strict: 키워드 매칭 필수, Lenient: 맥락적 허용)"
+          },
+          "explanation_depth": {
+            "type": "string",
+            "enum": [
+              "Answer_Only",
+              "Detailed_with_Examples"
+            ],
+            "description": "해설의 깊이 (정답만 제시 vs 예시와 유도 질문을 포함한 상세 해설)"
+          }
+        },
+        "required": [
+          "strictness",
+          "explanation_depth"
+        ]
+      },
+      "scope_boundary": {
+        "type": "string",
+        "enum": [
+          "Lecture_Material_Only",
+          "Allow_External_Knowledge"
+        ],
+        "description": "지식의 탐색 범위 (강의록 내부로 한정할지, 외부 지식을 허용할지 결정)"
+      }
+    },
+    "required": [
+      "learning_goal",
+      "user_status",
+      "interaction_style",
+      "feedback_preference",
+      "scope_boundary"
+    ]
+  }
