@@ -1,0 +1,46 @@
+{
+  "type": "object",
+  "properties": {
+    "planning_strategy": {
+      "type": "string",
+      "description": "전체적인 출제 전략 요약 (예: '용어 정의를 묻는 단답형 3문제와, 개념 간 비교를 요하는 서술형 2문제로 구성')"
+    },
+    "planned_items": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "description": "문제 식별 번호"
+          },
+          "target_topic": {
+            "type": "string",
+            "description": "다룰 핵심 개념"
+          },
+          "question_type": {
+            "type": "string",
+            "enum": ["Short_Keyword", "Descriptive"],
+            "description": "문제 유형. 단순 회상(단답)인지 설명(서술)인지 결정"
+          },
+          "intent_type": {
+            "type": "string",
+            "enum": ["Recall", "Definition", "Comparison", "Causal_Explanation", "Application_Scenario"],
+            "description": "질문의 구체적 의도"
+          },
+          "complexity_level": {
+            "type": "string",
+            "enum": ["Basic", "Intermediate", "Advanced"],
+            "description": "난이도 설정"
+          },
+          "source_reference_hint": {
+            "type": "string",
+            "description": "강의 자료 내 참조 위치 및 정답 구성을 위한 핵심 포인트"
+          }
+        },
+        "required": ["id", "target_topic", "question_type", "intent_type", "complexity_level", "source_reference_hint"]
+      }
+    }
+  },
+  "required": ["planning_strategy", "planned_items"]
+}

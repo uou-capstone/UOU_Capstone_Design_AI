@@ -1,0 +1,327 @@
+(base) jhkim@Jhui-MacBookPro ShortAnswer % python ShortAnswer_main.py
+
+문제 생성 워크플로우 시작...
+
+사용자 학습 프로필 생성/수정하는 중...
+Warning: there are non-text parts in the response: ['thought_signature'], returning concatenated parsed result from text parts. Check the full candidates.content.parts accessor to get the full model response.
+Warning: there are non-text parts in the response: ['thought_signature'], returning concatenated text result from text parts. Check the full candidates.content.parts accessor to get the full model response.
+단답형 문제를 만들기 위해 먼저 어떤 주제(키워드)를 중점적으로 공부하고 싶으신지, 그리고 현재 본인의 지식 수준(초급/중급/고급)을 알려주세요.
+삼성전자의 주가에 대해서 문 제를 만드어줘, 고급 수준으로
+Warning: there are non-text parts in the response: ['thought_signature'], returning concatenated parsed result from text parts. Check the full candidates.content.parts accessor to get the full model response.
+Warning: there are non-text parts in the response: ['thought_signature'], returning concatenated text result from text parts. Check the full candidates.content.parts accessor to get the full model response.
+Warning: there are non-text parts in the response: ['thought_signature'], returning concatenated parsed result from text parts. Check the full candidates.content.parts accessor to get the full model response.
+Warning: there are non-text parts in the response: ['thought_signature'], returning concatenated text result from text parts. Check the full candidates.content.parts accessor to get the full model response.
+프로필 작성이 완료되었습니다:
+=== 학습 목표 ===
+  집중 학습 영역: 삼성전자 주가
+  목표 이해 수준: Deep Understanding
+  문제 출제 스타일: Balance
+
+=== 사용자 상태 ===
+  현재 지식 수준: Advanced
+  취약점 집중 모드: False
+
+=== 상호작용 스타일 ===
+  언어 선호: Korean_with_English_Terms
+  시나리오 기반 문제: True
+
+=== 피드백 선호 ===
+  채점 엄격도: Strict
+  해설 깊이: Detailed_with_Examples
+
+=== 지식 범위 ===
+  탐색 범위: Allow_External_Knowledge
+이대로 진행하시겠습니까? 수정사항이 있다면 입력해주세요. (Enter to confirm)
+
+>> 사용자 프로필 확정 완료.
+
+생성할 단답형/서술형 문제 개수 결정하는 중...
+생성할 단답형/서술형 문제 개수를 입력하세요 (최대 20개, 기본 5개): 6
+>> 목표 문제 수: 6개
+
+단답형/서술형 문제 생성하는 중...
+
+단답형/서술형 출제 계획 수립 시작 (목표 문항 수: 6)...
+Warning: there are non-text parts in the response: ['thought_signature'], returning concatenated parsed result from text parts. Check the full candidates.content.parts accessor to get the full model response.
+Warning: there are non-text parts in the response: ['thought_signature'], returning concatenated text result from text parts. Check the full candidates.content.parts accessor to get the full model response.
+>> 출제 계획 수립 완료.
+
+ 문제 생성 및 검증 진행 중...
+   - Writer 호출: 문제 생성 중...
+Warning: there are non-text parts in the response: ['thought_signature'], returning concatenated parsed result from text parts. Check the full candidates.content.parts accessor to get the full model response.
+Warning: there are non-text parts in the response: ['thought_signature'], returning concatenated text result from text parts. Check the full candidates.content.parts accessor to get the full model response.
+   - Validator 호출: 품질 검증 중...
+Warning: there are non-text parts in the response: ['thought_signature'], returning concatenated parsed result from text parts. Check the full candidates.content.parts accessor to get the full model response.
+Warning: there are non-text parts in the response: ['thought_signature'], returning concatenated text result from text parts. Check the full candidates.content.parts accessor to get the full model response.
+>> 검증 통과! 최종 결과물을 반환합니다.
+>> 단답형/서술형 문제 생성 완료.
+
+사용자 응답 수집하는 중...
+
+[문제 1] (Short_Keyword) 2025년 4분기 삼성전자 DS(반도체) 부문의 영업이익이 전 분기 대비 크게 개선(약 10조원 증가)될 수 있었던 핵심 동인 3가지를 제시하시오.
+답변을 입력하세요: 몰라  
+
+[문제 2] (Descriptive) DS 부문의 수혜 요인인 '메모리 가격 상승'이 MX(모바일) 사업부의 수익성에는 어떠한 메커니즘으로 악영향을 미쳤는지 '원가' 관점에서 서술하시오.
+답변을 입력하세요: 몰라
+
+[문제 3] (Descriptive) 보고서에서 제시한 삼성전자의 상향된 목표주가 180,000원이 도출된 Valuation 산출 근거(적용 지표 및 수치 포함)를 구체적으로 서술하시오.
+답변을 입력하세요: 몰라
+
+[문제 4] (Short_Keyword) HBM 관련 우려가 완화될 것으로 예상되는 2026년에 삼성전자가 의미 있는 시장 점유율을 확보할 것으로 전망되는 차세대 제품의 명칭은 무엇인가?
+답변을 입력하세요: 몰라
+
+[문제 5] (Descriptive) 2025F 대비 2026F의 전사 영업이익률(OPM)과 ROE가 각각 13.2%에서 35.5%, 10.6%에서 29.0%로 급격히 개선될 것으로 전망되는 배경을 DS 부문의 실적 변화와 연결하여 분석하시오.
+답변을 입력하세요: 몰라
+
+[문제 6] (Descriptive) 2025년 4분기 VD/가전(CE) 부문이 큰 폭의 적자를 기록하게 된 대외적 및 매크로 환경적 원인 3가지를 서술하시오.
+답변을 입력하세요: 몰라
+>> 사용자 응답 수집 완료.
+
+피드백 생성 워크플로우 시작...
+
+단답형/서술형 채점 및 기초 피드백 생성하는 중...
+Warning: there are non-text parts in the response: ['thought_signature'], returning concatenated parsed result from text parts. Check the full candidates.content.parts accessor to get the full model response.
+Warning: there are non-text parts in the response: ['thought_signature'], returning concatenated text result from text parts. Check the full candidates.content.parts accessor to get the full model response.
+Warning: there are non-text parts in the response: ['thought_signature'], returning concatenated parsed result from text parts. Check the full candidates.content.parts accessor to get the full model response.
+Warning: there are non-text parts in the response: ['thought_signature'], returning concatenated text result from text parts. Check the full candidates.content.parts accessor to get the full model response.
+Warning: there are non-text parts in the response: ['thought_signature'], returning concatenated parsed result from text parts. Check the full candidates.content.parts accessor to get the full model response.
+Warning: there are non-text parts in the response: ['thought_signature'], returning concatenated text result from text parts. Check the full candidates.content.parts accessor to get the full model response.
+Warning: there are non-text parts in the response: ['thought_signature'], returning concatenated parsed result from text parts. Check the full candidates.content.parts accessor to get the full model response.
+Warning: there are non-text parts in the response: ['thought_signature'], returning concatenated text result from text parts. Check the full candidates.content.parts accessor to get the full model response.
+Warning: there are non-text parts in the response: ['thought_signature'], returning concatenated parsed result from text parts. Check the full candidates.content.parts accessor to get the full model response.
+Warning: there are non-text parts in the response: ['thought_signature'], returning concatenated text result from text parts. Check the full candidates.content.parts accessor to get the full model response.
+Warning: there are non-text parts in the response: ['thought_signature'], returning concatenated parsed result from text parts. Check the full candidates.content.parts accessor to get the full model response.
+Warning: there are non-text parts in the response: ['thought_signature'], returning concatenated text result from text parts. Check the full candidates.content.parts accessor to get the full model response.
+통합 학습 결과 로그 및 피드백 생성하는 중...
+>> 최종 피드백 생성 완료.
+
+==================================================
+최종 결과 요약:
+
+[1] User Profile:
+{
+    "learning_goal": {
+        "focus_areas": [
+            "삼성전자 주가"
+        ],
+        "target_depth": "Deep Understanding",
+        "question_modality": "Balance"
+    },
+    "user_status": {
+        "proficiency_level": "Advanced",
+        "weakness_focus": false
+    },
+    "interaction_style": {
+        "language_preference": "Korean_with_English_Terms",
+        "scenario_based": true
+    },
+    "feedback_preference": {
+        "strictness": "Strict",
+        "explanation_depth": "Detailed_with_Examples"
+    },
+    "scope_boundary": "Allow_External_Knowledge"
+}
+
+[2] Generated Short Answer Problems:
+{
+    "short_answer_problems": [
+        {
+            "id": 1,
+            "type": "Short_Keyword",
+            "question_content": "2025년 4분기 삼성전자 DS(반도체) 부문의 영업이익이 전 분기 대비 크게 개선(약 10조원 증가)될 수 있었던 핵심 동인 3가지를 제시하시오.",
+            "model_answer": "DRAM 및 SSD 수요 증가에 따른 가격 상승 효과, HBM(고대역폭메모리) 물량 증가, 그리고 전반적인 ASP(평균판매단가)의 상승이 주요 동인이다.",
+            "key_keywords": [
+                "DRAM",
+                "SSD",
+                "HBM",
+                "ASP 상승"
+            ],
+            "intent_diagnosis": "반도체 부문 실적 성장의 세부 동인을 정확히 파악하고 있는지 평가함."
+        },
+        {
+            "id": 2,
+            "type": "Descriptive",
+            "question_content": "DS 부문의 수혜 요인인 '메모리 가격 상승'이 MX(모바일) 사업부의 수익성에는 어떠한 메커니즘으로 악영향을 미쳤는지 '원가' 관점에서 서술하시오.",
+            "model_answer": "메모리 가격의 상승은 스마트폰을 제조하는 MX 사업부에 있어 주요 부품 매입 원가의 상승을 의미하며, 이로 인해 전반적인 원가 구조가 악화되어 수익성이 부진해지는 결과를 초래했다.",
+            "key_keywords": [
+                "메모리 가격 상승",
+                "원가 구조 악화",
+                "부품 매입 원가"
+            ],
+            "intent_diagnosis": "사업부 간의 수직적 계열화 구조에서 발생하는 비용 전이 및 실적 디커플링 현상을 이해하고 있는지 진단함."
+        },
+        {
+            "id": 3,
+            "type": "Descriptive",
+            "question_content": "보고서에서 제시한 삼성전자의 상향된 목표주가 180,000원이 도출된 Valuation 산출 근거(적용 지표 및 수치 포함)를 구체적으로 서술하시오.",
+            "model_answer": "2026년 예상 BPS(주당순자산가치)인 78,295원에 타겟 PBR(주가순자산비율) 멀티플인 2.3배를 적용하여 산출되었다.",
+            "key_keywords": [
+                "BPS",
+                "PBR",
+                "78,295원",
+                "2.3배"
+            ],
+            "intent_diagnosis": "절대적인 주가 수치뿐만 아니라 이를 도출하기 위한 재무적 지표와 가치 평가 방법론을 숙지하고 있는지 확인함."
+        },
+        {
+            "id": 4,
+            "type": "Short_Keyword",
+            "question_content": "HBM 관련 우려가 완화될 것으로 예상되는 2026년에 삼성전자가 의미 있는 시장 점유율을 확보할 것으로 전망되는 차세대 제품의 명칭은 무엇인가?",
+            "model_answer": "HBM4",
+            "key_keywords": [
+                "HBM4"
+            ],
+            "intent_diagnosis": "삼성전자의 차세대 메모리 로드맵 및 시장 경쟁력 회복의 핵심 제품을 인지하고 있는지 평가함."
+        },
+        {
+            "id": 5,
+            "type": "Descriptive",
+            "question_content": "2025F 대비 2026F의 전사 영업이익률(OPM)과 ROE가 각각 13.2%에서 35.5%, 10.6%에서 29.0%로 급격히 개선될 것으로 전망되는 배경을 DS 부문의 실적 변화와 연결하여 분석하시오.",
+            "model_answer": "2026년에 DS 부문의 영업이익이 약 137조원 규모로 급증하며 전사 이익 성장을 강력하게 견인할 것으로 예상되기 때문에 전반적인 수익성 지표 및 자기자본 효율성이 대폭 개선되는 것이다.",
+            "key_keywords": [
+                "DS 부문 영업이익 급증",
+                "OPM 개선",
+                "ROE 상승",
+                "이익 견인"
+            ],
+            "intent_diagnosis": "연간 추정 실적 데이터를 통해 특정 사업부가 전사 재무 건전성 및 수익성에 미치는 영향력을 분석할 수 있는지 진단함."
+        },
+        {
+            "id": 6,
+            "type": "Descriptive",
+            "question_content": "2025년 4분기 VD/가전(CE) 부문이 큰 폭의 적자를 기록하게 된 대외적 및 매크로 환경적 원인 3가지를 서술하시오.",
+            "model_answer": "내구재 소비 부진에 따른 수요 위축, 가전 시장 내 제조사 간의 경쟁 심화, 그리고 원재료 가격 상승 등에 따른 원가 부담 확대가 복합적으로 작용하였다.",
+            "key_keywords": [
+                "내구재 소비 부진",
+                "경쟁 심화",
+                "원가 상승"
+            ],
+            "intent_diagnosis": "세트 사업부의 실적을 저해하는 글로벌 경기 여건 및 산업적 저해 요인을 이해하고 있는지 평가함."
+        }
+    ]
+}
+
+[3] User Answers:
+{
+    "1": "몰",
+    "2": "몰라",
+    "3": "몰라",
+    "4": "몰라",
+    "5": "몰라",
+    "6": "몰라"
+}
+
+[4] Grading Data:
+{
+    "evaluation_items": [
+        {
+            "question_id": 1,
+            "result_status": "Incorrect",
+            "question_content": "2025년 4분기 삼성전자 DS(반도체) 부문의 영업이익이 전 분기 대비 크게 개선(약 10조원 증가)될 수 있었던 핵심 동인 3가지를 제시하시오.",
+            "user_response": "몰",
+            "related_topic": "삼성전자 DS 부문 실적 성장 동인",
+            "feedback_message": "답변이 매우 부족하거나 질문의 의도를 파악하지 못했습니다. 2025년 4분기 삼성전자 DS 부문의 영업이익 개선 핵심 동인은 DRAM 및 SSD의 수요 증가에 따른 가격 상승, HBM(고대역폭메모리) 물량 증가, 그리고 전반적인 ASP(평균판매단가)의 상승입니다. 해당 키워드들을 중심으로 학습해 보시기 바랍니다."
+        },
+        {
+            "question_id": 2,
+            "result_status": "Incorrect",
+            "question_content": "DS 부문의 수혜 요인인 '메모리 가격 상승'이 MX(모바일) 사업부의 수익성에는 어떠한 메커니즘으로 악영향을 미쳤는지 '원가' 관점에서 서술하시오.",
+            "user_response": "몰라",
+            "related_topic": "DS-MX 부문 간 원가 전이 및 수익성 분석",
+            "feedback_message": "답변이 제출되지 않았거나 내용을 파악할 수 없습니다. DS 부문의 호재인 '메모리 가격 상승'은 스마트폰을 제조하는 MX 사업부 입장에서는 '부품 매입 원가'의 상승을 의미합니다. 이로 인해 '원가 구조가 악화'되어 수익성이 감소하게 된다는 점을 중심으로 다시 학습해 보세요."
+        },
+        {
+            "question_id": 3,
+            "result_status": "Incorrect",
+            "question_content": "보고서에서 제시한 삼성전자의 상향된 목표주가 180,000원이 도출된 Valuation 산출 근거(적용 지표 및 수치 포함)를 구체적으로 서술하시오.",
+            "user_response": "몰라",
+            "related_topic": "Valuation 산출 근거 (BPS, PBR)",
+            "feedback_message": "정답을 모르시는군요. 해당 목표주가 180,000원은 2026년 예상 BPS(78,295원)에 타겟 PBR 멀티플(2.3배)을 곱하여 산출되었습니다. 핵심 지표인 BPS와 PBR, 그리고 구체적인 적용 수치를 다시 한번 확인해 보세요."
+        },
+        {
+            "question_id": 4,
+            "result_status": "Incorrect",
+            "question_content": "HBM 관련 우려가 완화될 것으로 예상되는 2026년에 삼성전자가 의미 있는 시장 점유율을 확보할 것으로 전망되는 차세대 제품의 명칭은 무엇인가?",
+            "user_response": "몰라",
+            "related_topic": "삼성전자 HBM 로드맵 (HBM4)",
+            "feedback_message": "정답은 'HBM4'입니다. 2026년은 삼성전자가 차세대 HBM4 시장에서 본격적인 점유율 확대를 노리는 중요한 시기임을 기억해 주세요."
+        },
+        {
+            "question_id": 5,
+            "result_status": "Incorrect",
+            "question_content": "2025F 대비 2026F의 전사 영업이익률(OPM)과 ROE가 각각 13.2%에서 35.5%, 10.6%에서 29.0%로 급격히 개선될 것으로 전망되는 배경을 DS 부문의 실적 변화와 연결하여 분석하시오.",
+            "user_response": "몰라",
+            "related_topic": "DS 부문 실적 및 수익성 지표(OPM, ROE) 분석",
+            "feedback_message": "답변을 작성하지 않으셨습니다. 2026년 OPM과 ROE가 급격히 개선되는 주요 원인은 DS 부문의 영업이익이 약 137조 원 규모로 급증하며 전사 이익 성장을 강력하게 견인하기 때문입니다. 전사 수익성 지표와 자본 효율성이 반도체 부문의 실적 회복에 직접적으로 연동되어 있음을 이해하는 것이 중요합니다."
+        },
+        {
+            "question_id": 6,
+            "result_status": "Incorrect",
+            "question_content": "2025년 4분기 VD/가전(CE) 부문이 큰 폭의 적자를 기록하게 된 대외적 및 매크로 환경적 원인 3가지를 서술하시오.",
+            "user_response": "몰라",
+            "related_topic": "2025년 4분기 실적 분석 (VD/가전)",
+            "feedback_message": "답변을 작성하지 않으셨습니다. 해당 부문의 적자 원인은 내구재 소비 부진, 제조사 간 경쟁 심화, 원재료 및 물류비 상승에 따른 원가 부담 확대입니다. 주요 경영 환경 변화 요인을 다시 한번 확인해 보시기 바랍니다."
+        }
+    ]
+}
+
+[5] Final Feedback Data:
+{
+    "session_meta": {
+        "exam_type": "ShortAnswer",
+        "source_material": "/Users/jhkim/Desktop/LectureTestGenerator/SamSung(260109).pdf",
+        "timestamp": "2026-01-24 11:05:14"
+    },
+    "evaluation_items": [
+        {
+            "question_id": 1,
+            "result_status": "Incorrect",
+            "question_content": "2025년 4분기 삼성전자 DS(반도체) 부문의 영업이익이 전 분기 대비 크게 개선(약 10조원 증가)될 수 있었던 핵심 동인 3가지를 제시하시오.",
+            "user_response": "몰",
+            "related_topic": "삼성전자 DS 부문 실적 성장 동인",
+            "feedback_message": "답변이 매우 부족하거나 질문의 의도를 파악하지 못했습니다. 2025년 4분기 삼성전자 DS 부문의 영업이익 개선 핵심 동인은 DRAM 및 SSD의 수요 증가에 따른 가격 상승, HBM(고대역폭메모리) 물량 증가, 그리고 전반적인 ASP(평균판매단가)의 상승입니다. 해당 키워드들을 중심으로 학습해 보시기 바랍니다."
+        },
+        {
+            "question_id": 2,
+            "result_status": "Incorrect",
+            "question_content": "DS 부문의 수혜 요인인 '메모리 가격 상승'이 MX(모바일) 사업부의 수익성에는 어떠한 메커니즘으로 악영향을 미쳤는지 '원가' 관점에서 서술하시오.",
+            "user_response": "몰라",
+            "related_topic": "DS-MX 부문 간 원가 전이 및 수익성 분석",
+            "feedback_message": "답변이 제출되지 않았거나 내용을 파악할 수 없습니다. DS 부문의 호재인 '메모리 가격 상승'은 스마트폰을 제조하는 MX 사업부 입장에서는 '부품 매입 원가'의 상승을 의미합니다. 이로 인해 '원가 구조가 악화'되어 수익성이 감소하게 된다는 점을 중심으로 다시 학습해 보세요."
+        },
+        {
+            "question_id": 3,
+            "result_status": "Incorrect",
+            "question_content": "보고서에서 제시한 삼성전자의 상향된 목표주가 180,000원이 도출된 Valuation 산출 근거(적용 지표 및 수치 포함)를 구체적으로 서술하시오.",
+            "user_response": "몰라",
+            "related_topic": "Valuation 산출 근거 (BPS, PBR)",
+            "feedback_message": "정답을 모르시는군요. 해당 목표주가 180,000원은 2026년 예상 BPS(78,295원)에 타겟 PBR 멀티플(2.3배)을 곱하여 산출되었습니다. 핵심 지표인 BPS와 PBR, 그리고 구체적인 적용 수치를 다시 한번 확인해 보세요."
+        },
+        {
+            "question_id": 4,
+            "result_status": "Incorrect",
+            "question_content": "HBM 관련 우려가 완화될 것으로 예상되는 2026년에 삼성전자가 의미 있는 시장 점유율을 확보할 것으로 전망되는 차세대 제품의 명칭은 무엇인가?",
+            "user_response": "몰라",
+            "related_topic": "삼성전자 HBM 로드맵 (HBM4)",
+            "feedback_message": "정답은 'HBM4'입니다. 2026년은 삼성전자가 차세대 HBM4 시장에서 본격적인 점유율 확대를 노리는 중요한 시기임을 기억해 주세요."
+        },
+        {
+            "question_id": 5,
+            "result_status": "Incorrect",
+            "question_content": "2025F 대비 2026F의 전사 영업이익률(OPM)과 ROE가 각각 13.2%에서 35.5%, 10.6%에서 29.0%로 급격히 개선될 것으로 전망되는 배경을 DS 부문의 실적 변화와 연결하여 분석하시오.",
+            "user_response": "몰라",
+            "related_topic": "DS 부문 실적 및 수익성 지표(OPM, ROE) 분석",
+            "feedback_message": "답변을 작성하지 않으셨습니다. 2026년 OPM과 ROE가 급격히 개선되는 주요 원인은 DS 부문의 영업이익이 약 137조 원 규모로 급증하며 전사 이익 성장을 강력하게 견인하기 때문입니다. 전사 수익성 지표와 자본 효율성이 반도체 부문의 실적 회복에 직접적으로 연동되어 있음을 이해하는 것이 중요합니다."
+        },
+        {
+            "question_id": 6,
+            "result_status": "Incorrect",
+            "question_content": "2025년 4분기 VD/가전(CE) 부문이 큰 폭의 적자를 기록하게 된 대외적 및 매크로 환경적 원인 3가지를 서술하시오.",
+            "user_response": "몰라",
+            "related_topic": "2025년 4분기 실적 분석 (VD/가전)",
+            "feedback_message": "답변을 작성하지 않으셨습니다. 해당 부문의 적자 원인은 내구재 소비 부진, 제조사 간 경쟁 심화, 원재료 및 물류비 상승에 따른 원가 부담 확대입니다. 주요 경영 환경 변화 요인을 다시 한번 확인해 보시기 바랍니다."
+        }
+    ]
+}
+
+==================================================

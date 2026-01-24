@@ -1,0 +1,19 @@
+{
+  "type": "object",
+  "properties": {
+    "result_status": {
+      "type": "string",
+      "enum": ["Correct", "Incorrect", "Partial_Correct"],
+      "description": "채점 결과. 핵심 키워드가 모두 포함되고 논리가 맞으면 Correct."
+    },
+    "related_topic": {
+      "type": "string",
+      "description": "관련 주제"
+    },
+    "feedback_message": {
+      "type": "string",
+      "description": "피드백. 맞았을 경우 칭찬, 부분 점수일 경우 누락된 키워드 지적, 틀렸을 경우 모범 답안과 비교하여 교정."
+    }
+  },
+  "required": ["result_status", "related_topic", "feedback_message"]
+}

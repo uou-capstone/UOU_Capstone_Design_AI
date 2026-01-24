@@ -1,0 +1,34 @@
+{
+  "type": "object",
+  "properties": {
+    "is_valid": {
+      "type": "boolean",
+      "description": "생성된 모든 단답형/서술형 문제가 강의 자료의 사실(Fact)과 일치하며, 모범 답안과 키워드가 채점 기준으로서 적절하게 설정되었는지 여부."
+    },
+    "feedback_message": {
+      "type": "array",
+      "description": "검증 실패 시 반환되는 수정 지침 리스트. 통과(True) 시 빈 배열([]) 반환.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "description": "오류가 발견된 문제의 고유 식별 번호"
+          },
+          "message": {
+            "type": "string",
+            "description": "구체적인 오류 원인(모범 답안 오류, 필수 키워드 누락, 질문의 모호성 등) 및 수정 가이드"
+          }
+        },
+        "required": [
+          "id",
+          "message"
+        ]
+      }
+    }
+  },
+  "required": [
+    "is_valid",
+    "feedback_message"
+  ]
+}

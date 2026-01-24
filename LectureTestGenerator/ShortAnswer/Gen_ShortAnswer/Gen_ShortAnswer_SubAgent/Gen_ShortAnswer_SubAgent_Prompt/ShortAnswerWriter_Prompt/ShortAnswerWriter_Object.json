@@ -1,0 +1,65 @@
+{
+  "type": "object",
+  "description": "생성된 단답형 및 서술형 문제 세트의 구조를 정의하는 객체",
+  "properties": {
+    "short_answer_problems": {
+      "type": "array",
+      "description": "생성된 개별 문제들의 리스트",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "description": "문제의 고유 번호"
+          },
+          "type": {
+            "type": "string",
+            "enum": ["Short_Keyword", "Descriptive"],
+            "description": "문제 유형 (단답형: 핵심 용어 묻기, 서술형: 설명이나 이유 서술)"
+          },
+          "question_content": {
+            "type": "string",
+            "description": "사용자에게 제시될 질문 텍스트"
+          },
+          "model_answer": {
+            "type": "string",
+            "description": "모범 답안 (채점의 기준이 되는 정답 텍스트)"
+          },
+          "key_keywords": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "정답 인정에 필수적인 핵심 키워드 리스트 (채점 시 포함 여부 확인용)"
+          },
+          "intent_diagnosis": {
+            "type": "string",
+            "description": "문제 출제 의도 및 학습 진단 가이드"
+          }
+        },
+        "required": [
+          "id",
+          "type",
+          "question_content",
+          "model_answer",
+          "key_keywords",
+          "intent_diagnosis"
+        ],
+        "propertyOrdering": [
+          "id",
+          "type",
+          "question_content",
+          "model_answer",
+          "key_keywords",
+          "intent_diagnosis"
+        ]
+      }
+    }
+  },
+  "required": [
+    "short_answer_problems"
+  ],
+  "propertyOrdering": [
+    "short_answer_problems"
+  ]
+}
