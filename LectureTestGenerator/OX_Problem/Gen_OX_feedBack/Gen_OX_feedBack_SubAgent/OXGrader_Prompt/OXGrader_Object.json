@@ -1,0 +1,14 @@
+{
+    "type": "object",
+    "properties": {
+      "related_topic": {
+        "type": "string",
+        "description": "해당 문제가 다루고 있는 핵심 주제나 개념 (예: Verification의 정의)"
+      },
+      "feedback_message": {
+        "type": "string",
+        "description": "학습자에게 보여줄 한 문장 내외의 피드백. 정답인 경우 이해도를 칭찬하고, 오답인 경우 Diagnosis를 참고하여 오개념을 교정해줌."
+      }
+    },
+    "required": ["related_topic", "feedback_message"]
+  }
