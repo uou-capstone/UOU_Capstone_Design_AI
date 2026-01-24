@@ -1,0 +1,121 @@
+{
+    "type": "object",
+    "properties": {
+        "is_valid": {
+            "type": "boolean",
+            "description": "사용자의 입력을 성공적으로 해석하여 프로필에 반영했는지 여부"
+        },
+        "new_profile": {
+            "type": "object",
+            "description": "업데이트가 반영된 최신 Session Profile 객체",
+            "properties": {
+                "mode_configuration": {
+                    "type": "object",
+                    "properties": {
+                        "dialogue_style": {
+                            "type": "string",
+                            "enum": [
+                                "Debate_Mode"
+                            ]
+                        },
+                        "interaction_goal": {
+                            "type": "string",
+                            "enum": [
+                                "Concept_Learning",
+                                "Critical_Critique"
+                            ],
+                            "description": "사용자의 학습 목표"
+                        },
+                        "goal_description": {
+                            "type": "string",
+                            "description": "목표에 따른 상세 설명 텍스트"
+                        }
+                    },
+                    "required": [
+                        "dialogue_style",
+                        "interaction_goal",
+                        "goal_description"
+                    ]
+                },
+                "content_context": {
+                    "type": "object",
+                    "description": "토론 주제 및 지식 범위 설정",
+                    "properties": {
+                        "target_topic": {
+                            "type": "object",
+                            "description": "이번 세션의 핵심 단일 주제",
+                            "properties": {
+                                "keyword": {
+                                    "type": "string",
+                                    "description": "주제 핵심 키워드 (예: DQN)"
+                                },
+                                "description": {
+                                    "type": "string",
+                                    "description": "주제의 구체적 범위 설명"
+                                }
+                            },
+                            "required": [
+                                "keyword"
+                            ]
+                        },
+                        "knowledge_boundary": {
+                            "type": "string",
+                            "enum": [
+                                "Lecture_Only",
+                                "Allow_External_Web"
+                            ]
+                        }
+                    },
+                    "required": [
+                        "target_topic",
+                        "knowledge_boundary"
+                    ]
+                },
+                "session_rules": {
+                    "type": "object",
+                    "properties": {
+                        "max_turns": {
+                            "type": "integer",
+                            "description": "최대 진행 턴 수"
+                        },
+                        "difficulty_parameter": {
+                            "type": "object",
+                            "properties": {
+                                "level": {
+                                    "type": "string",
+                                    "enum": [
+                                        "Low",
+                                        "Medium",
+                                        "High"
+                                    ]
+                                },
+                                "custom_constraints": {
+                                    "type": "array",
+                                    "items": {
+                                        "type": "string"
+                                    }
+                                }
+                            },
+                            "required": [
+                                "level"
+                            ]
+                        }
+                    },
+                    "required": [
+                        "max_turns",
+                        "difficulty_parameter"
+                    ]
+                }
+            },
+            "required": [
+                "mode_configuration",
+                "content_context",
+                "session_rules"
+            ]
+        }
+    },
+    "required": [
+        "is_valid",
+        "new_profile"
+    ]
+}

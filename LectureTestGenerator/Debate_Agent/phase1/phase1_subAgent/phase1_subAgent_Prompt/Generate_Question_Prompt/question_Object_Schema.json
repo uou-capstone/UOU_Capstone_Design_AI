@@ -1,0 +1,81 @@
+{
+  "type": "object",
+  "properties": {
+    "target_fields": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "누락된 필드명들의 리스트 (예: ['content_context.target_topic.keyword', 'session_rules.max_turns'])"
+    },
+    "question_text": {
+      "type": "string",
+      "description": "사용자에게 던질 자연스러운 질문 텍스트"
+    },
+    "recommendations": {
+      "type": "object",
+      "description": "각 누락된 필드별 추천 값 (필드명을 명시적으로 정의)",
+      "properties": {
+        "mode_configuration.dialogue_style": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "mode_configuration.interaction_goal": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "mode_configuration.goal_description": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "content_context.target_topic.keyword": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "content_context.target_topic.description": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "content_context.knowledge_boundary": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "session_rules.max_turns": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "session_rules.difficulty_parameter.level": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "session_rules.difficulty_parameter.custom_constraints": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  },
+  "required": [
+    "target_fields",
+    "question_text",
+    "recommendations"
+  ]
+}

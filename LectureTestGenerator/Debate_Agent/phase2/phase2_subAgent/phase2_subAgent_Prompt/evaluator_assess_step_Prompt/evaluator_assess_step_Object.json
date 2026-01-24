@@ -1,0 +1,20 @@
+{
+    "type": "object",
+    "properties": {
+      "score_delta": {
+        "type": "integer",
+        "minimum": -10,
+        "maximum": 10,
+        "description": "현재 점수에 더하거나 뺄 점수. 논리적이면 양수, 방어 실패나 오류 시 음수."
+      },
+      "rationale": {
+        "type": "string",
+        "description": "점수 부여의 구체적인 근거. (로그 기록용)"
+      },
+      "detected_logic_flaw": {
+        "type": "string",
+        "description": "발견된 논리적 오류가 있다면 기술 (없으면 null)"
+      }
+    },
+    "required": ["score_delta", "rationale"]
+  }
