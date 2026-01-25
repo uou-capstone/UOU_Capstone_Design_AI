@@ -1,6 +1,7 @@
 import os
+import asyncio
 from dotenv import load_dotenv
-from typing import TypedDict, Dict, Any
+from typing import TypedDict
 from google import genai
 from google.genai import types
 import pathlib
@@ -214,6 +215,102 @@ SUPPLEMENTARY_GOOD_PROMPT = """### 롤 (Role)
 """
 
 
+# ----------------------------
+# Async Q&A (Prefetch-ready)
+# ----------------------------
+def _load_material_part(pdf_path: str):
+    """
+    강의 자료 로드 유틸.
+    - PDF: types.Part(application/pdf)
+    - .md/.txt: 텍스트(str)
+    """
+    filepath = pathlib.Path(pdf_path)
+    ext = filepath.suffix.lower()
+
+    if ext == ".pdf":
+        return types.Part.from_bytes(
+            data=filepath.read_bytes(),
+            mime_type="application/pdf",
+        )
+    if ext in [".md", ".txt"]:
+        return filepath.read_text(encoding="utf-8")
+
+    raise ValueError(f"지원하지 않는 파일 형식입니다: {ext}")
+
+
+async def call_gemini_async(contents):
+    """
+    Gemini API 호출을 asyncio-friendly 하게 감싼 래퍼.
+    내부적으로는 동기 SDK를 별도 스레드에서 실행.
+    """
+    client = genai.Client(api_key=GEMINI_API_KEY)
+    return await asyncio.to_thread(
+        client.models.generate_content,
+        model="gemini-2.5-flash",
+        contents=contents,
+    )
+
+
+async def generate_model_answer_async(question: str, pdf_path: str) -> str:
+    """
+    Prefetch용: 모범 답안만 먼저 생성.
+    사용자가 답변을 입력하는 동안 백그라운드에서 실행될 것을 의도한다.
+    """
+    content_part = _load_material_part(pdf_path)
+
+    user_prompt = f"""[Original Question]: {question}
+
+위의 질문에 대한 모범 답안을 생성해주세요."""
+
+    response = await call_gemini_async([MODEL_ANSWER_PROMPT, content_part, user_prompt])
+    return response.text
+
+
+async def run_qa_flow_async(
+    question: str,
+    user_answer: str,
+    pdf_path: str,
+    precomputed_model_answer: str | None = None,
+) -> str:
+    """
+    채점 및 해설 생성 플로우.
+    - precomputed_model_answer가 있으면 모범 답안 생성을 건너뛰어 체감 대기시간을 줄인다.
+    """
+    content_part = _load_material_part(pdf_path)
+
+    # 1) Model Answer
+    model_answer = precomputed_model_answer or await generate_model_answer_async(question, pdf_path)
+
+    # 2) Validation (GOOD/BAD)
+    val_prompt = f"""[Original Question]: {question}
+[Model Answer]: {model_answer}
+[User Answer]: {user_answer}
+
+위의 정보를 바탕으로 사용자의 이해도를 판정해주세요."""
+
+    val_res = await call_gemini_async([VALIDATION_PROMPT, content_part, val_prompt])
+    validation_result = (val_res.text or "").strip().upper()
+
+    # 3) Branch
+    if "GOOD" in validation_result:
+        supp_prompt = f"""[Original Question]: {question}
+[Model Answer]: {model_answer}
+
+위의 정보를 바탕으로 학습자의 이해를 강화하는 보충 설명문을 작성해주세요."""
+        final_res = await call_gemini_async([SUPPLEMENTARY_GOOD_PROMPT, content_part, supp_prompt])
+        return final_res.text
+
+    # BAD: 기존 BAD-mode 루프는 느리므로, 로컬 체감 개선을 위해 '핵심 교정' 버전 제공
+    bad_prompt = f"""[Original Question]: {question}
+[User Answer]: {user_answer}
+[Model Answer]: {model_answer}
+
+사용자가 오답을 냈습니다. 올바른 개념을 친절하게 설명해주세요."""
+
+    final_res = await call_gemini_async([content_part, bad_prompt])
+    return f"[오답입니다] 핵심 개념 다시보기:\n{final_res.text}"
+
+
 # BAD 모드 - 하위 개념 분할 시스템 프롬프트
 CONCEPT_DECOMPOSITION_PROMPT = """### 롤 (Role)
 
@@ -345,7 +442,7 @@ EVALUATION_PROMPT = """## 역할 (Role)
 
 ## 입력 (Inputs)
 
-* **Question**: 단일 하위 개념 질문 텍스트
+* **Question**: 단일 하위 개념 질문 텍스트.
 * **User Answer**: 사용자 답변 텍스트(서술/식/절차 등).
 
 ## 출력 (Output)
@@ -398,7 +495,7 @@ EVALUATION_PROMPT = """## 역할 (Role)
 def generate_model_answer(state: QAState) -> QAState:
     """PDF 파일을 읽어 모범 답안을 생성하는 함수"""
     client = genai.Client(api_key=GEMINI_API_KEY)
-    filepath = pathlib.Path(state["pdf_path"])
+    content_part = _load_material_part(state["pdf_path"])
     
     user_prompt = f"""[Original Question]: {state["original_question"]}
 
@@ -408,10 +505,7 @@ def generate_model_answer(state: QAState) -> QAState:
         model="gemini-2.5-flash",
         contents=[
             MODEL_ANSWER_PROMPT,
-            types.Part.from_bytes(
-                data=filepath.read_bytes(),
-                mime_type='application/pdf',
-            ),
+            content_part,
             user_prompt
         ]
     )
@@ -423,7 +517,7 @@ def generate_model_answer(state: QAState) -> QAState:
 def validate_understanding(state: QAState) -> QAState:
     """사용자 답변을 검증하여 GOOD/BAD를 판정하는 함수"""
     client = genai.Client(api_key=GEMINI_API_KEY)
-    filepath = pathlib.Path(state["pdf_path"])
+    content_part = _load_material_part(state["pdf_path"])
     
     user_prompt = f"""[Original Question]: {state["original_question"]}
 
@@ -437,10 +531,7 @@ def validate_understanding(state: QAState) -> QAState:
         model="gemini-2.5-flash",
         contents=[
             VALIDATION_PROMPT,
-            types.Part.from_bytes(
-                data=filepath.read_bytes(),
-                mime_type='application/pdf',
-            ),
+            content_part,
             user_prompt
         ]
     )
@@ -453,7 +544,7 @@ def validate_understanding(state: QAState) -> QAState:
 def generate_supplementary_good(state: QAState) -> QAState:
     """GOOD 모드에서 보충 설명을 생성하는 함수"""
     client = genai.Client(api_key=GEMINI_API_KEY)
-    filepath = pathlib.Path(state["pdf_path"])
+    content_part = _load_material_part(state["pdf_path"])
     
     user_prompt = f"""[Original Question]: {state["original_question"]}
 
@@ -465,10 +556,7 @@ def generate_supplementary_good(state: QAState) -> QAState:
         model="gemini-2.5-flash",
         contents=[
             SUPPLEMENTARY_GOOD_PROMPT,
-            types.Part.from_bytes(
-                data=filepath.read_bytes(),
-                mime_type='application/pdf',
-            ),
+            content_part,
             user_prompt
         ]
     )
@@ -605,22 +693,7 @@ def route_after_validation(state: QAState) -> str:
         return "handle_bad_mode"
 
 
-def format_final_response(final_state: QAState) -> Dict[str, Any]:
-    """
-    LangGraph 실행 결과를 API 응답으로 사용 가능한 딕셔너리로 변환
-    """
-    return {
-        "supplementary_explanation": final_state.get("supplementary_explanation", ""),
-        "validation_result": final_state.get("validation_result", ""),
-        "concept_queue": final_state.get("concept_queue", []),
-        "current_concept_index": final_state.get("current_concept_index", 0),
-        "bad_mode_history": final_state.get("bad_mode_history", []),
-        "state": final_state.get("state", "GOOD"),
-        "needs_follow_up": final_state.get("validation_result", "").strip().upper() == "BAD"
-    }
-
-
-def main(qa_input: list) -> Dict[str, Any]:
+def main(qa_input: list) -> str:
     """
     Main 함수: 질문, 사용자 답변, PDF 경로를 받아 보충 설명을 생성
     
@@ -633,48 +706,10 @@ def main(qa_input: list) -> Dict[str, Any]:
     """
     # 입력 파싱
     (original_question, user_answer), pdf_path = qa_input
-    
-    # 워크플로우 구성
-    workflow = StateGraph(QAState)
-    workflow.add_node("generate_model_answer", generate_model_answer)
-    workflow.add_node("validate_understanding", validate_understanding)
-    workflow.add_node("handle_bad_mode", handle_bad_mode)
-    workflow.add_node("generate_supplementary_good", generate_supplementary_good)
-    
-    workflow.add_edge(START, "generate_model_answer")
-    workflow.add_edge("generate_model_answer", "validate_understanding")
-    workflow.add_conditional_edges(
-        "validate_understanding",
-        route_after_validation,
-        {
-            "generate_supplementary_good": "generate_supplementary_good",
-            "handle_bad_mode": "handle_bad_mode"
-        }
-    )
-    workflow.add_edge("handle_bad_mode", "generate_supplementary_good")
-    workflow.add_edge("generate_supplementary_good", END)
-    
-    qa_agent = workflow.compile()
-    
-    # 초기 상태 설정
-    initial_state = {
-        "original_question": original_question,
-        "user_answer": user_answer,
-        "pdf_path": pdf_path,
-        "state": "GOOD",
-        "model_answer": "",
-        "validation_result": "",
-        "supplementary_explanation": "",
-        "concept_queue": [],
-        "current_concept_index": 0,
-        "bad_mode_history": []
-    }
-    
-    # 워크플로우 실행
-    final_state = qa_agent.invoke(initial_state)
-    
-    # 최종 결과를 구조화하여 반환
-    return format_final_response(final_state)
+
+    # Prefetch/async 플로우(로컬 체감 최적화) 사용
+    # 기존 LangGraph 기반 BAD-mode 루프는 유지되어 있지만, main은 더 빠른 async 플로우를 기본으로 사용한다.
+    return asyncio.run(run_qa_flow_async(original_question, user_answer, pdf_path))
 
 
 # 테스트용 코드 (직접 실행하지 않는 이상 수행 X)

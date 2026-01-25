@@ -1,0 +1,8 @@
+google-generativeai==0.8.5
+google-genai==1.37.0
+tqdm==4.67.1
+ipykernel==6.29.4
+ipython==8.25.0
+jupyter_client==8.6.2
+jupyter_core==5.7.2
+
