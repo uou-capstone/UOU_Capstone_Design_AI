@@ -23,3 +23,6 @@ python-multipart==0.0.9
 
 # HTTP Client
 httpx==0.28.1
+
+# Redis
+redis>=5.0.0

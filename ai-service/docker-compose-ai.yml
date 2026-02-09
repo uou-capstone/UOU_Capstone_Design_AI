@@ -1,4 +1,17 @@
+version: '3.8'
+
 services:
+  # Redis 서비스 추가
+  redis:
+    image: redis:alpine
+    container_name: ai-redis
+    ports:
+      - "6379:6379"
+    restart: always
+    command: redis-server --save 60 1 --loglevel warning
+    volumes:
+      - redis_data:/data
+
   ai-service:
     image: golila0611/ai-service:latest
     env_file:
@@ -8,3 +21,11 @@ services:
     volumes:
       - ./uploads:/app/uploads
     restart: unless-stopped
+    depends_on:
+      - redis
+    environment:
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+
+volumes:
+  redis_data:

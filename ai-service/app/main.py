@@ -7,6 +7,9 @@ from app.routers.pdf import router as pdf_router
 from app.routers.lecture import router as lecture_router
 from app.routers.qa import router as qa_router
 from app.routers.upload import router as upload_router
+from app.routers.note_gen import router as note_gen_router
+from app.routers.test_gen import router as test_gen_router
+from app.core.redis_client import redis_manager
 
 def create_app() -> FastAPI:
     app = FastAPI(title="AI Service")
@@ -52,10 +55,30 @@ def create_app() -> FastAPI:
     app.include_router(lecture_router)
     app.include_router(qa_router)
     app.include_router(upload_router)
+    app.include_router(note_gen_router)
+    app.include_router(test_gen_router)
     
     @app.get("/health")
-    def health():
-        return {"status": "ok"}
+    async def health():
+        """헬스 체크 엔드포인트 (Redis 상태 포함)"""
+        redis_status = "unknown"
+        try:
+            redis_healthy = await redis_manager.health_check()
+            redis_status = "connected" if redis_healthy else "disconnected"
+        except Exception as e:
+            redis_status = f"error: {str(e)}"
+        
+        return {
+            "status": "ok",
+            "redis": redis_status
+        }
+    
+    @app.on_event("shutdown")
+    async def shutdown_event():
+        """애플리케이션 종료 시 Redis 연결 종료"""
+        await redis_manager.close()
+        print("[Redis] Connection closed")
+    
     return app
 
 
