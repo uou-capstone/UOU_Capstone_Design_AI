@@ -1,4 +1,3 @@
-
 services:
   # Redis 서비스 추가
   redis:
