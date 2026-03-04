@@ -3,6 +3,8 @@ import os
 import json
 import asyncio
 import traceback
+from typing import Any, Dict
+
 from ai_agent.LectureContentGenerator.agents.phase1_planning import execute_phase1
 from ai_agent.LectureContentGenerator.agents.phase2_briefing import execute_phase2
 from ai_agent.LectureContentGenerator.agents.phase3_research import execute_phase3_async
@@ -80,58 +82,53 @@ async def generate_lecture_note(topic: str, audience: str = "University Students
         raise e
 
 
-async def generate_lecture_note_task(task_id: str, topic: str, audience: str):
+async def run_phase1(topic: str, audience_level: str) -> Dict[str, Any]:
     """
-    백그라운드에서 실행되며 Redis에 진행 상황을 보고하는 래퍼 함수
-    
-    Args:
-        task_id: 작업 고유 ID
-        topic: 강의 주제
-        audience: 대상 독자 수준
+    Phase 1: 기획안 생성 (API용 래퍼)
+    """
+    print(f"[NoteGen] Phase 1: Planning... topic={topic}, audience={audience_level}")
+    user_input = f"주제: {topic}\n대상 독자: {audience_level}"
+    draft_plan = execute_phase1(topic=user_input, auto_mode=True)
+
+    if not draft_plan:
+        raise RuntimeError("Phase 1 실패: 기획안을 생성할 수 없습니다.")
+
+    return draft_plan
+
+
+async def run_phase2(draft_plan: Dict[str, Any], user_feedback: str) -> Dict[str, Any]:
+    """
+    Phase 2: 피드백 반영 및 기획안 확정 (API용 래퍼)
+    """
+    print("[NoteGen] Phase 2: Briefing with user feedback...")
+    finalized_brief = execute_phase2(draft_plan, auto_mode=True, user_feedback=user_feedback)
+
+    if not finalized_brief:
+        raise RuntimeError("Phase 2 실패: 기획안 확정에 실패했습니다.")
+
+    return finalized_brief
+
+
+async def run_phase3_to_5_task(task_id: str, finalized_brief: Dict[str, Any]):
+    """
+    Phase 3~5: 비동기 집필 및 조립 태스크
+
+    - Phase 3: Research & Writing
+    - Phase 4: Review
+    - Phase 5: Assembly
     """
     redis = redis_manager.get_client()
     key = f"task:{task_id}"
 
     try:
-        # Phase 1: 기획
-        await redis.set(
-            key,
-            json.dumps({
-                "status": "processing",
-                "progress": 10,
-                "message": "기획안 작성 중...",
-                "topic": topic
-            }, ensure_ascii=False)
-        )
-        user_input = f"주제: {topic}\n대상 독자: {audience}"
-        draft_plan = execute_phase1(topic=user_input, auto_mode=True)
-        
-        if not draft_plan:
-            raise RuntimeError("Phase 1 실패: 기획안을 생성할 수 없습니다.")
-
-        # Phase 2: 브리핑
-        await redis.set(
-            key,
-            json.dumps({
-                "status": "processing",
-                "progress": 30,
-                "message": "기획 검토 중...",
-                "topic": topic
-            }, ensure_ascii=False)
-        )
-        finalized_brief = execute_phase2(draft_plan, auto_mode=True)
-        
-        if not finalized_brief:
-            raise RuntimeError("Phase 2 실패: 기획안 확정에 실패했습니다.")
-
         # Phase 3: 집필 (가장 오래 걸림)
         await redis.set(
             key,
             json.dumps({
                 "status": "processing",
-                "progress": 50,
+                "progress": 30,
                 "message": "본문 집필 중 (AI 병렬 처리)...",
-                "topic": topic
+                "topic": finalized_brief.get("project_meta", {}).get("title")
             }, ensure_ascii=False)
         )
         chapter_contents = await execute_phase3_async(finalized_brief)
@@ -146,7 +143,7 @@ async def generate_lecture_note_task(task_id: str, topic: str, audience: str):
                 "status": "processing",
                 "progress": 80,
                 "message": "내용 검증 및 수정 중...",
-                "topic": topic
+                "topic": finalized_brief.get("project_meta", {}).get("title")
             }, ensure_ascii=False)
         )
         verified_contents = await execute_phase4_async(chapter_contents, finalized_brief)
@@ -161,7 +158,7 @@ async def generate_lecture_note_task(task_id: str, topic: str, audience: str):
                 "status": "processing",
                 "progress": 90,
                 "message": "최종 문서 생성 중...",
-                "topic": topic
+                "topic": finalized_brief.get("project_meta", {}).get("title")
             }, ensure_ascii=False)
         )
         final_md = execute_phase5(verified_contents)
@@ -177,11 +174,11 @@ async def generate_lecture_note_task(task_id: str, topic: str, audience: str):
                 "progress": 100,
                 "result": final_md,
                 "message": "완료됨",
-                "topic": topic
+                "topic": finalized_brief.get("project_meta", {}).get("title")
             }, ensure_ascii=False),
             ex=86400  # 24시간 TTL
         )
-        print(f"[NoteGen] Task {task_id} completed successfully")
+        print(f"[NoteGen] Task {task_id} completed successfully (Phase 3~5)")
 
     except Exception as e:
         print(f"[Task Error] {task_id}: {e}")
@@ -194,7 +191,7 @@ async def generate_lecture_note_task(task_id: str, topic: str, audience: str):
                     "progress": 0,
                     "error": str(e),
                     "message": f"작업 실패: {str(e)}",
-                    "topic": topic
+                    "topic": finalized_brief.get("project_meta", {}).get("title")
                 }, ensure_ascii=False),
                 ex=86400  # 24시간 TTL
             )
