@@ -1,0 +1,17 @@
+{
+  "name": "merge-edu-agent",
+  "private": true,
+  "version": "1.0.0",
+  "workspaces": [
+    "apps/server",
+    "apps/web"
+  ],
+  "scripts": {
+    "dev": "concurrently -n server,web,bridge -c cyan,magenta,yellow \"npm:dev -w apps/server\" \"npm:dev -w apps/web\" \"bash -lc 'source .venv/bin/activate && uvicorn --app-dir apps/ai-bridge main:app --host 127.0.0.1 --port ${AI_BRIDGE_PORT:-8001} --reload'\"",
+    "build": "npm run build -w apps/server && npm run build -w apps/web",
+    "test": "npm run test -w apps/server"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2"
+  }
+}
