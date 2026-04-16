@@ -16,8 +16,36 @@ import {
   applyLearnerMemoryWrite,
   buildPageHistoryDigest
 } from "./LearnerMemoryService.js";
+import {
+  markAssessmentsConsumed,
+  preparePendingAssessmentHandoff
+} from "./QuizAssessmentService.js";
 import { StreamProgressEvent, ToolDispatcher } from "./ToolDispatcher.js";
 import { ensurePageState, progressText } from "./utils.js";
+
+type ParsedOrchestratorPlan = ReturnType<typeof parseOrchestratorPlan>;
+
+/**
+ * Ver3 Phase 1: pedagogy policy single choke point.
+ *
+ * Called exactly once in processEvent(), right after planWithLlm() returns.
+ * Guarantees plan.pedagogyPolicy is always defined before dispatch, covering
+ * both the LLM-success path and the deterministic fallback path with a single
+ * safety net. ToolDispatcher's R1 rule provides a second defensive layer.
+ */
+function normalizePlan(plan: ParsedOrchestratorPlan): ParsedOrchestratorPlan {
+  if (plan.pedagogyPolicy) return plan;
+  return {
+    ...plan,
+    pedagogyPolicy: {
+      mode: "ADVANCE",
+      reason: "normalized: policy missing from upstream plan",
+      allowDirectAnswer: true,
+      hintDepth: "LOW",
+      interventionBudget: 1
+    }
+  };
+}
 
 export type EventStreamChunk =
   | {
@@ -124,6 +152,7 @@ export class OrchestrationEngine {
       lectureNumPages: number;
       pageContext: { pageText: string; prev: string; next: string };
       fileRef: NonNullable<LectureItem["pdf"]["geminiFile"]> | undefined;
+      assessmentDigest?: string;
     },
     emit?: (chunk: EventStreamChunk) => void
   ): Promise<{ plan: ReturnType<typeof parseOrchestratorPlan>; thoughtSummary: string }> {
@@ -142,6 +171,7 @@ export class OrchestrationEngine {
         prev: input.pageContext.prev,
         next: input.pageContext.next
       },
+      assessmentDigest: input.assessmentDigest ?? "",
       policy: {
         passScoreRatio: appConfig.passScoreRatio,
         recentMessagesN: appConfig.recentMessagesN
@@ -267,21 +297,31 @@ export class OrchestrationEngine {
     }
     ensurePageState(reduced, reduced.currentPage);
 
+    const assessmentHandoff =
+      body.event.type === "SAVE_AND_EXIT"
+        ? { assessmentIds: [] as string[], digest: "" }
+        : preparePendingAssessmentHandoff(reduced);
+
     const context = await this.pdfIngestService.readPageContext(
       lecture.pdf.pageIndexPath,
       reduced.currentPage
     );
 
-    const { plan, thoughtSummary } = await this.planWithLlm(
+    const { plan: rawPlan, thoughtSummary } = await this.planWithLlm(
       {
         request: body,
         session: reduced,
         lectureNumPages: maxPage,
         pageContext: context,
-        fileRef: lecture.pdf.geminiFile
+        fileRef: lecture.pdf.geminiFile,
+        assessmentDigest: assessmentHandoff.digest
       },
       emit
     );
+
+    // Ver3 Phase 1 — single normalization choke point. Covers LLM success and
+    // fallback paths; guarantees plan.pedagogyPolicy is present before dispatch.
+    const plan = normalizePlan(rawPlan);
 
     applyLearnerMemoryWrite(reduced, plan.memoryWrite);
 
@@ -308,6 +348,7 @@ export class OrchestrationEngine {
           quizText: quizContextText
         },
         eventPayload: body.event.payload,
+        pedagogyPolicy: plan.pedagogyPolicy,
         resolvePageContext: async (page, stateSnapshot) => {
           const resolved = await this.pdfIngestService.readPageContext(
             lecture.pdf.pageIndexPath,
@@ -350,6 +391,17 @@ export class OrchestrationEngine {
       dispatchedState,
       appConfig.recentMessagesN
     );
+    if (assessmentHandoff.assessmentIds.length > 0) {
+      markAssessmentsConsumed(dispatchedState, assessmentHandoff.assessmentIds);
+      console.log(
+        "[assessment_consume] " +
+          JSON.stringify({
+            sessionId: dispatchedState.sessionId,
+            deliveredIds: assessmentHandoff.assessmentIds,
+            consumedCount: assessmentHandoff.assessmentIds.length
+          })
+      );
+    }
     dispatchedState.updatedAt = new Date().toISOString();
 
     await this.appendQuizResultLogs(state, dispatchedState);
@@ -365,7 +417,8 @@ export class OrchestrationEngine {
         currentPage: dispatchedState.currentPage,
         progressText: progressText(dispatchedState.currentPage),
         pageState,
-        learnerModel: dispatchedState.learnerModel
+        learnerModel: dispatchedState.learnerModel,
+        activeIntervention: dispatchedState.activeIntervention ?? null
       }
     };
   }

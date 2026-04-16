@@ -1,0 +1,121 @@
+[
+  {
+    "id": "lec_7fbsypfv",
+    "weekId": "wk_fv11pbro",
+    "title": "테스트용1",
+    "pdf": {
+      "path": "/Users/jhkim/Desktop/MergeEduAgent/apps/server/apps/server/uploads/lec_7fbsypfv.pdf",
+      "numPages": 8,
+      "pageIndexPath": "/Users/jhkim/Desktop/MergeEduAgent/apps/server/apps/server/uploads/lec_7fbsypfv.pageIndex.json",
+      "geminiFile": {
+        "fileName": "files/4735y55l3sfo",
+        "fileUri": "https://generativelanguage.googleapis.com/v1beta/files/4735y55l3sfo",
+        "mimeType": "application/pdf"
+      }
+    },
+    "createdAt": "2026-03-04T04:58:48.498Z",
+    "updatedAt": "2026-03-04T04:58:48.498Z"
+  },
+  {
+    "id": "lec_p40gh9kw",
+    "weekId": "wk_fv11pbro",
+    "title": "sd",
+    "pdf": {
+      "path": "/Users/jhkim/Desktop/MergeEduAgent/apps/server/apps/server/uploads/lec_p40gh9kw.pdf",
+      "numPages": 8,
+      "pageIndexPath": "/Users/jhkim/Desktop/MergeEduAgent/apps/server/apps/server/uploads/lec_p40gh9kw.pageIndex.json",
+      "geminiFile": {
+        "fileName": "files/98rxf6fl58z5",
+        "fileUri": "https://generativelanguage.googleapis.com/v1beta/files/98rxf6fl58z5",
+        "mimeType": "application/pdf"
+      }
+    },
+    "createdAt": "2026-03-05T07:15:40.325Z",
+    "updatedAt": "2026-03-05T07:15:40.325Z"
+  },
+  {
+    "id": "lec_vdfae5pg",
+    "weekId": "wk_fv11pbro",
+    "title": "ee",
+    "pdf": {
+      "path": "/Users/jhkim/Desktop/MergeEduAgent/apps/server/apps/server/uploads/lec_vdfae5pg.pdf",
+      "numPages": 8,
+      "pageIndexPath": "/Users/jhkim/Desktop/MergeEduAgent/apps/server/apps/server/uploads/lec_vdfae5pg.pageIndex.json",
+      "geminiFile": {
+        "fileName": "files/devaean8j92b",
+        "fileUri": "https://generativelanguage.googleapis.com/v1beta/files/devaean8j92b",
+        "mimeType": "application/pdf"
+      }
+    },
+    "createdAt": "2026-03-05T07:18:45.475Z",
+    "updatedAt": "2026-03-05T07:18:45.475Z"
+  },
+  {
+    "id": "lec_p45zu0xv",
+    "weekId": "wk_fv11pbro",
+    "title": "dd",
+    "pdf": {
+      "path": "/Users/jhkim/Desktop/MergeEduAgent/apps/server/apps/server/uploads/lec_p45zu0xv.pdf",
+      "numPages": 8,
+      "pageIndexPath": "/Users/jhkim/Desktop/MergeEduAgent/apps/server/apps/server/uploads/lec_p45zu0xv.pageIndex.json",
+      "geminiFile": {
+        "fileName": "files/01tf1af2mr5d",
+        "fileUri": "https://generativelanguage.googleapis.com/v1beta/files/01tf1af2mr5d",
+        "mimeType": "application/pdf"
+      }
+    },
+    "createdAt": "2026-03-06T01:12:23.603Z",
+    "updatedAt": "2026-03-06T01:12:23.603Z"
+  },
+  {
+    "id": "lec_fqi4iv1n",
+    "weekId": "wk_94l9v0i5",
+    "title": "dd",
+    "pdf": {
+      "path": "/Users/jhkim/Desktop/MergeEduAgent/apps/server/apps/server/uploads/lec_fqi4iv1n.pdf",
+      "numPages": 8,
+      "pageIndexPath": "/Users/jhkim/Desktop/MergeEduAgent/apps/server/apps/server/uploads/lec_fqi4iv1n.pageIndex.json",
+      "geminiFile": {
+        "fileName": "files/8n1w62c3jjel",
+        "fileUri": "https://generativelanguage.googleapis.com/v1beta/files/8n1w62c3jjel",
+        "mimeType": "application/pdf"
+      }
+    },
+    "createdAt": "2026-03-06T01:18:06.170Z",
+    "updatedAt": "2026-03-06T01:18:06.170Z"
+  },
+  {
+    "id": "lec_wjhlc0y4",
+    "weekId": "wk_zj9u6kiz",
+    "title": "kk",
+    "pdf": {
+      "path": "/Users/jhkim/Documents/MergeEduAgentFull/apps/server/apps/server/uploads/lec_wjhlc0y4.pdf",
+      "numPages": 25,
+      "pageIndexPath": "/Users/jhkim/Documents/MergeEduAgentFull/apps/server/apps/server/uploads/lec_wjhlc0y4.pageIndex.json",
+      "geminiFile": {
+        "fileName": "files/017088bepmxh",
+        "fileUri": "https://generativelanguage.googleapis.com/v1beta/files/017088bepmxh",
+        "mimeType": "application/pdf"
+      }
+    },
+    "createdAt": "2026-03-29T02:26:49.414Z",
+    "updatedAt": "2026-03-29T02:26:49.414Z"
+  },
+  {
+    "id": "lec_linear_regression_demo",
+    "weekId": "wk_bgfsjos3",
+    "title": "5. Linear Regression",
+    "pdf": {
+      "path": "/Users/jhkim/Documents/MergeEduAgentFull/apps/server/apps/server/uploads/lec_linear_regression_demo.pdf",
+      "numPages": 17,
+      "pageIndexPath": "/Users/jhkim/Documents/MergeEduAgentFull/apps/server/apps/server/uploads/lec_linear_regression_demo.pageIndex.json",
+      "geminiFile": {
+        "fileName": "files/ocslrclyiq1a",
+        "fileUri": "https://generativelanguage.googleapis.com/v1beta/files/ocslrclyiq1a",
+        "mimeType": "application/pdf"
+      }
+    },
+    "createdAt": "2026-04-13T12:56:00.502Z",
+    "updatedAt": "2026-04-13T13:01:06.841Z"
+  }
+]

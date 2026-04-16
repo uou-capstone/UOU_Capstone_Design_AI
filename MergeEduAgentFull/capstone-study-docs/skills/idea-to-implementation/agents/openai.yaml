@@ -1,0 +1,4 @@
+interface:
+  display_name: "Idea To Implementation"
+  short_description: "Plan, design, verify, implement ideas"
+  default_prompt: "Use $idea-to-implementation to turn this selected idea into an implementation plan, a detailed design doc, code changes, and a final implementation report."

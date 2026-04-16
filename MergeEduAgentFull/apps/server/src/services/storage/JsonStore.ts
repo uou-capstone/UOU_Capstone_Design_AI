@@ -5,9 +5,11 @@ import {
   LectureItem,
   SCHEMA_VERSION,
   SessionState,
+  StudentCompetencyReport,
   Week
 } from "../../types/domain.js";
 import { createInitialIntegratedMemory } from "../engine/LearnerMemoryService.js";
+import { createInitialQaThreadMemory } from "../engine/QaThreadService.js";
 import { paths } from "./paths.js";
 
 function now(): string {
@@ -68,6 +70,7 @@ export class JsonStore {
     await ensureFile(paths.classrooms, "[]");
     await ensureFile(paths.weeks, "[]");
     await ensureFile(paths.lectures, "[]");
+    await ensureFile(paths.classroomReports, "[]");
     await ensureFile(paths.quizResults, "[]");
   }
 
@@ -94,10 +97,35 @@ export class JsonStore {
       paths.classrooms,
       classrooms.filter((c) => c.id !== classroomId)
     );
+    await this.deleteClassroomReport(classroomId);
 
     const weeks = await this.listWeeksByClassroom(classroomId);
     const weekIds = weeks.map((w) => w.id);
     await this.deleteWeeksBulk(weekIds);
+  }
+
+  async listClassroomReports(): Promise<StudentCompetencyReport[]> {
+    return readJson<StudentCompetencyReport[]>(paths.classroomReports, []);
+  }
+
+  async getClassroomReport(classroomId: string): Promise<StudentCompetencyReport | null> {
+    const reports = await this.listClassroomReports();
+    return reports.find((report) => report.classroomId === classroomId) ?? null;
+  }
+
+  async saveClassroomReport(report: StudentCompetencyReport): Promise<void> {
+    const reports = await this.listClassroomReports();
+    const next = reports.filter((item) => item.classroomId !== report.classroomId);
+    next.push(report);
+    await atomicWrite(paths.classroomReports, next);
+  }
+
+  async deleteClassroomReport(classroomId: string): Promise<void> {
+    const reports = await this.listClassroomReports();
+    await atomicWrite(
+      paths.classroomReports,
+      reports.filter((item) => item.classroomId !== classroomId)
+    );
   }
 
   async listWeeksByClassroom(classroomId: string): Promise<Week[]> {
@@ -258,6 +286,15 @@ export class JsonStore {
       if (!parsed.integratedMemory) {
         parsed.integratedMemory = createInitialIntegratedMemory();
       }
+      if (!parsed.quizAssessments) {
+        parsed.quizAssessments = [];
+      }
+      if (parsed.activeIntervention === undefined) {
+        parsed.activeIntervention = null;
+      }
+      if (!parsed.qaThread) {
+        parsed.qaThread = createInitialQaThreadMemory();
+      }
       return parsed;
     } catch {
       return null;
@@ -292,6 +329,9 @@ export class JsonStore {
         strongConcepts: []
       },
       integratedMemory: createInitialIntegratedMemory(),
+      quizAssessments: [],
+      activeIntervention: null,
+      qaThread: createInitialQaThreadMemory(),
       conversationSummary: "",
       updatedAt: now()
     };

@@ -1,0 +1,269 @@
+{
+  "schemaVersion": "1.0",
+  "sessionId": "ses_lec_p45zu0xv",
+  "lectureId": "lec_p45zu0xv",
+  "currentPage": 1,
+  "pageStates": [
+    {
+      "page": 1,
+      "status": "EXPLAINED",
+      "lastTouchedAt": "2026-03-06T01:17:41.070Z",
+      "explainSummary": "안녕하세요! 정보이론의 핵심인 **엔트로피(Entropy)** 공부를 돕기 위해 1페이지 내용을 상세히 설명해 드리겠습니다. 퀴즈 성적을 올리기 위해서는 단순 암기보다 각 개념이 갖는 **직관적인 의미**를 파악하는 것이 중요합니다.\n\n---\n\n## 📄 [1페이지] 정보량과 엔트로피의 기초\n\n### 1. 정보량 (Information Content)\n\n#### 🔍 정의\n정보량 $I(x)$는 어떤 사건 $x$가 발생했을 때 우리가 느끼는 **'놀람(Surprise)의 정도'**를 수치화한 것입니다.\n\n#### 💡 직관적 이해\n*",
+      "explainMarkdown": "안녕하세요! 정보이론의 핵심인 **엔트로피(Entropy)** 공부를 돕기 위해 1페이지 내용을 상세히 설명해 드리겠습니다. 퀴즈 성적을 올리기 위해서는 단순 암기보다 각 개념이 갖는 **직관적인 의미**를 파악하는 것이 중요합니다.\n\n---\n\n## 📄 [1페이지] 정보량과 엔트로피의 기초\n\n### 1. 정보량 (Information Content)\n\n#### 🔍 정의\n정보량 $I(x)$는 어떤 사건 $x$가 발생했을 때 우리가 느끼는 **'놀람(Surprise)의 정도'**를 수치화한 것입니다.\n\n#### 💡 직관적 이해\n*   **당연한 일(확률 높음):** \"내일 해가 동쪽에서 뜬다.\" (확률 100%) $\\rightarrow$ 아무도 놀라지 않습니다. 정보가 거의 없습니다.\n*   **의외의 일(확률 낮음):** \"갑자기 하늘에서 돈이 떨어진다.\" (확률 매우 낮음) $\\rightarrow$ 매우 놀랍습니다! 이 사건은 많은 정보를 담고 있습니다.\n*   즉, **확률이 낮을수록(희귀할수록) 정보량은 커집니다.**\n\n#### 🔢 수식 분석\n$$I(x) = \\log \\frac{1}{P(x)} = -\\log P(x)$$\n*   로그 함수를 사용하여 확률의 역수에 취합니다. (로그 밑이 2이면 단위는 **bits**입니다.)\n*   왜 로그를 쓸까요? 독립적인 두 사건이 동시에 일어날 때, 정보량은 **더해지는(Additive)** 성질을 갖게 하기 위해서입니다.\n\n---\n\n### 2. 엔트로피 (Entropy)\n\n#### 🔍 정의\n엔트로피 $H(X)$는 랜덤 변수 $X$가 가질 수 있는 모든 정보량의 **'기댓값(평균)'**입니다.\n\n#### 💡 직관적 이해\n*   **불확실성의 척도:** 사건이 얼마나 예측하기 어려운지를 나타냅니다.\n*   **질문 횟수:** 이 데이터를 전송하거나 설명하기 위해 필요한 평균적인 '예/아니오' 질문 횟수라고 생각하면 쉽습니다.\n\n#### 🔢 수식 분석\n$$H(X) = \\sum_{x \\in \\mathcal{X}} p(x) \\log \\frac{1}{p(x)} = \\mathbb{E}_p[I(X)]$$\n*   각 사건의 정보량($I(X)$)에 그 사건이 일어날 확률($p(x)$)을 곱해서 모두 더한 값입니다.\n\n---\n\n### 3. 특성 요약 (시험 단골 포인트!)\n\n*   **비음수성:** $H(X) \\geq 0$ (정보의 평균이 음수일 수는 없습니다.)\n*   **최소값 (0):** 어느 한 사건의 확률이 1일 때(결과가 100% 확실할 때) 엔트로피는 0입니다. 즉, 놀랄 일이 전혀 없는 상태입니다.\n*   **최대값 (Uniform Distribution):** 모든 사건의 확률이 동일할 때($1/n$) 불확실성이 가장 커지며, 이때 $H(X) = \\log n$이 됩니다.\n*   **단위:** 로그 밑이 2이면 **bits**, 자연로그($e$)이면 **nats**를 사용합니다.\n\n---\n\n### 4. 베르누이 엔트로피 예제 (2.1.1)\n\n#### 📝 상황 설정\n동전 던지기처럼 결과가 두 가지(0 또는 1)인 경우를 **베르누이 시행**이라고 합니다.\n*   $X=1$일 확률: $p$\n*   $X=0$일 확률: $1-p$\n\n#### ⚠️ 오개념 교정 포인트\n학생들이 자주 헷갈리는 부분은 **\"확률 $p$가 높으면 엔트로피도 높다?\"**는 생각입니다.\n*   **아닙니다!** 만약 $p=0.99$라면 결과가 거의 항상 1이 나올 것을 알기 때문에 불확실성(엔트로피)은 매우 낮습니다.\n*   엔트로피가 가장 높은 지점은 $p=0.5$일 때, 즉 **앞면과 뒷면이 나올 확률이 똑같아서 결과를 가장 예측하기 힘들 때**입니다. (이 내용은 2페이지 그래프에서 시각적으로 확인할 수 있습니다.)\n\n---\n\n**요약하자면:**\n1페이지에서는 **\"정보량은 놀람의 정도이고, 엔트로피는 그 놀람의 평균(불확실성)이다\"**라는 개념을 잡는 것이 핵심입니다.\n\n이해가 되지 않는 수식이나 개념이 있다면 언제든 질문해 주세요!",
+      "quiz": {
+        "lastQuizId": "quiz_chap2_entropy_p1",
+        "bestScoreRatio": 0
+      }
+    }
+  ],
+  "messages": [
+    {
+      "role": "assistant",
+      "agent": "ORCHESTRATOR",
+      "contentMarkdown": "학습 세션에 오신 것을 환영합니다. 현재 1페이지입니다.\n\n바로 설명부터 시작할까요?",
+      "widget": {
+        "type": "BINARY_CHOICE",
+        "decisionType": "START_EXPLANATION_DECISION"
+      },
+      "id": "msg_fe994406",
+      "createdAt": "2026-03-06T01:12:29.596Z",
+      "thoughtSummaryMarkdown": "세션 초기 진입입니다. 현재 1페이지 기준으로 시작 안내와 설명 시작 여부를 판단합니다."
+    },
+    {
+      "role": "assistant",
+      "agent": "ORCHESTRATOR",
+      "contentMarkdown": "1페이지 설명을 시작합니다.",
+      "id": "msg_pn15i632",
+      "createdAt": "2026-03-06T01:12:36.443Z",
+      "thoughtSummaryMarkdown": "설명 시작 의사결정을 확인하고, 수락 시 설명 에이전트를 호출하도록 계획합니다."
+    },
+    {
+      "role": "assistant",
+      "agent": "EXPLAINER",
+      "contentMarkdown": "안녕하세요! 현재 보고 계신 **1페이지**의 핵심 내용을 정리해 드리겠습니다.\n\n### **1페이지: 정보량과 엔트로피의 기본 개념**\n\n**1. 정보량 (Information Content)**\n1페이지 상단에서는 '정보량'을 정의합니다. 정보량이란 어떤 사건 $x$가 발생했을 때 얻는 **놀람(Surprise)의 정도**를 말합니다.\n*   **수식:** $I(x) = \\log \\frac{1}{P(x)}$\n*   **특징:** 확률이 낮을수록(발생하기 어려울수록) 그 사건이 일어났을 때 얻는 정보량은 많아집니다. 즉, 예측하기 힘든 사건일수록 정보 가치가 높다는 뜻입니다.\n\n**2. 엔트로피 (Entropy)**\n1페이지 중반부터는 '엔트로피'를 다룹니다. 엔트로피는 랜덤 변수 $X$가 가지는 **기대 정보량**을 의미합니다.\n*   **정의:** 사건이 얼마나 예측하기 어려운지를 수치로 나타낸 것입니다.\n*   **수식:** $H(X) = \\sum_{x \\in \\mathcal{X}} p(x) \\log \\frac{1}{p(x)}$ 또는 기댓값 형태인 $\\mathbb{E}_p[I(X)]$로 표현합니다.\n*   **해석:** 엔트로피는 각 사건 정보량의 '평균값'이라고 이해하면 쉽습니다.\n\n**3. 엔트로피의 주요 특성**\n1페이지의 '특성 요약' 부분에 명시된 핵심 성질들입니다.\n*   **단위:** 로그의 밑을 2로 사용할 때 단위는 **bits**가 됩니다.\n*   **항상 0 이상:** $H(X) \\ge 0$이며, 결과가 100% 확실하여 $p(x)=1$인 경우 정보가 없으므로 엔트로피는 0이 됩니다.\n*   **최대값:** 모든 사건의 확률이 동일한 **균등 분포(Uniform Distribution)**일 때 불확실성이 가장 크며, 이때 엔트로피는 $H(X) = \\log n$으로 최대가 됩니다.\n\n**4. 베르누이 엔트로피 예제**\n1페이지 하단에서는 가장 단순한 형태인 **베르누이 시행(결과가 0 또는 1)**에 대한 엔트로피 정의를 시작합니다. 확률 $p$로 1이 나오고, $1-p$로 0이 나오는 경우의 엔트로피 계산식은 다음 페이지로 이어지게 됩니다.\n\n이처럼 1페이지는 정보 이론의 가장 기초가 되는 정보량과 엔트로피의 정의 및 성질을 핵심적으로 요약하고 있습니다. 추가로 궁금한 점이 있다면 말씀해 주세요!",
+      "thoughtSummaryMarkdown": "**Analyzing Information Content**\n\nI am now focusing on the first page, specifically examining \"Chap2) Entropy (1)\" and \"Section 1: Information Content (정보)\". My goal is to extract the core concepts from Page 1 and present them clearly, incorporating page numbers as needed for better context. I'm aiming for concise yet informative explanations.\n\n\n**Defining Key Concepts**\n\nI've moved on to solidify the definitions presented, now focusing on the core concepts such as the 'degree of surprise' (page number undefined), information content $I(x) = \\log \\frac{1}{P(x)}$, and how low probabilities lead to high information.  I'm also working to define entropy as the expected information content, quantifying its predictability. I'm noting the formulas $H(X) = \\sum_{x \\in \\mathcal{X}} p(x) \\log \\frac{1}{p(x)}$ and its expected value variant. I'm also including characteristics like units of bits and the fact that $H(X) \\ge 0$.",
+      "id": "msg_4i8k56ax",
+      "createdAt": "2026-03-06T01:12:52.219Z"
+    },
+    {
+      "role": "assistant",
+      "agent": "ORCHESTRATOR",
+      "contentMarkdown": "현재 페이지 설명이 끝났습니다. 퀴즈를 진행할까요?",
+      "widget": {
+        "type": "BINARY_CHOICE",
+        "decisionType": "QUIZ_DECISION"
+      },
+      "id": "msg_pqn34gmn",
+      "createdAt": "2026-03-06T01:12:52.219Z",
+      "thoughtSummaryMarkdown": "설명 시작 의사결정을 확인하고, 수락 시 설명 에이전트를 호출하도록 계획합니다."
+    },
+    {
+      "role": "assistant",
+      "agent": "ORCHESTRATOR",
+      "contentMarkdown": "퀴즈 유형을 선택해 주세요.",
+      "widget": {
+        "type": "QUIZ_TYPE_PICKER",
+        "options": [
+          {
+            "id": "MCQ",
+            "label": "객관식"
+          },
+          {
+            "id": "OX",
+            "label": "OX"
+          },
+          {
+            "id": "SHORT",
+            "label": "단답형"
+          },
+          {
+            "id": "ESSAY",
+            "label": "서술형"
+          }
+        ],
+        "recommendedId": "MCQ",
+        "badgeText": "추천됨"
+      },
+      "id": "msg_viab40l2",
+      "createdAt": "2026-03-06T01:13:13.078Z",
+      "thoughtSummaryMarkdown": "퀴즈 진행 여부를 반영해 유형 선택 또는 다음 페이지 질문으로 분기합니다."
+    },
+    {
+      "role": "assistant",
+      "agent": "QUIZ",
+      "contentMarkdown": "1페이지 퀴즈가 생성되었습니다. 퀴즈 모달에서 응시해 주세요.",
+      "thoughtSummaryMarkdown": "**Defining Quiz Structure**\n\nI'm currently focused on defining the initial structure for the quiz. I've established the `schemaVersion`, `quizId` prefix, the `quizType` as \"OX\", and I'm targeting page 1 for content extraction. Next, I need to figure out how to parse the information from the document to populate the questions and answers.\n\n\n**Structuring Quiz Questions**\n\nI've got the quiz questions taking shape now. I've defined the required fields, including `id`, `promptMarkdown`, `points`, and `answer.value`. I've extracted three questions from the source text and formulated them: one true, one about units, and a revised question about entropy's behavior. I am using the content to derive the quiz questions.\n\n\n**Refining Quiz Content**\n\nI've been refining the quiz questions, ensuring they align with the extracted information. I've formulated three new questions: one about information content, one regarding entropy's units, and another on uniform distribution's entropy value. I'm focusing on ensuring accuracy and clarity, and checking the values in the JSON, as exemplified, for example, for question q2. I'm also ensuring the quiz is well-formatted for the user.",
+      "id": "msg_zrxtjsva",
+      "createdAt": "2026-03-06T01:13:29.656Z"
+    },
+    {
+      "role": "assistant",
+      "agent": "QUIZ",
+      "contentMarkdown": "1페이지 퀴즈가 생성되었습니다. 퀴즈 모달에서 응시해 주세요.",
+      "thoughtSummaryMarkdown": "**Defining Quiz Structure**\n\nI'm working on defining the structure for a quiz JSON file. I've decided the content will come from the provided entropy document's first page, and I'm sticking with a JSON format only. I've set up the basic fields, including the schema version as \"1.0\", and the `quizId` starts with \"quiz\\_\".\n\n\n**Specifying Quiz Details**\n\nI've specified the `quizType` as \"OX\", focusing solely on page 1 of the entropy document. I am making this a short quiz of only 3 questions. For each question, I'm making sure to define the following keys for OX questions: `id`, `promptMarkdown`, `points`, and the boolean `answer.value`. I'm also now thinking about the information content of the questions, as well as entropy. I see that the lower the probability, the higher the information content.\n\n\n**Refining Quiz Content**\n\nI've finalized the three questions, focusing on entropy concepts. Question 1 highlights the inverse relationship between probability and information content. Question 2 covers entropy when a probability is 1, while Question 3 addresses the maximizing value of entropy when the distribution is uniform, making it a \"false\" answer. The `quizId` is now \"quiz\\_chap2\\_entropy\\_p1\". I'm still keeping the quiz structure consistent with JSON and schema version 1.0.\n\n\n**Finalizing Quiz Questions**\n\nI've refined the third question's markdown to be, \"로그의 밑이 2인 경우, 엔트로피의 단위는 bits로 정의된다.\" and it's confirmed as true. I am now refining the second question to be clearer, so that it states: \"엔트로피 $H(X)$는 항상 0보다 크거나 같으며, 사건이 완전 확실한 경우($p(x)=1$)에 0이 된다.\" which will now be `true`, not `false`. I've double checked for JSON compliance and schema, and finalized the questions! I feel it's complete.",
+      "id": "msg_9017bm3z",
+      "createdAt": "2026-03-06T01:15:16.534Z"
+    },
+    {
+      "role": "assistant",
+      "agent": "GRADER",
+      "contentMarkdown": "채점 완료: **0/30**",
+      "id": "msg_olftvvdu",
+      "createdAt": "2026-03-06T01:15:36.123Z"
+    },
+    {
+      "role": "assistant",
+      "agent": "ORCHESTRATOR",
+      "contentMarkdown": "점수가 기준 미달입니다. 복습을 진행할까요?",
+      "widget": {
+        "type": "BINARY_CHOICE",
+        "decisionType": "REVIEW_DECISION"
+      },
+      "id": "msg_i87zwlpd",
+      "createdAt": "2026-03-06T01:15:36.123Z",
+      "thoughtSummaryMarkdown": "문항 유형에 따라 자동 채점 또는 LLM 채점 경로를 선택하고 결과를 학습 모델에 반영합니다."
+    },
+    {
+      "role": "assistant",
+      "agent": "EXPLAINER",
+      "contentMarkdown": "안녕하세요! 정보이론의 핵심인 **엔트로피(Entropy)** 공부를 돕기 위해 1페이지 내용을 상세히 설명해 드리겠습니다. 퀴즈 성적을 올리기 위해서는 단순 암기보다 각 개념이 갖는 **직관적인 의미**를 파악하는 것이 중요합니다.\n\n---\n\n## 📄 [1페이지] 정보량과 엔트로피의 기초\n\n### 1. 정보량 (Information Content)\n\n#### 🔍 정의\n정보량 $I(x)$는 어떤 사건 $x$가 발생했을 때 우리가 느끼는 **'놀람(Surprise)의 정도'**를 수치화한 것입니다.\n\n#### 💡 직관적 이해\n*   **당연한 일(확률 높음):** \"내일 해가 동쪽에서 뜬다.\" (확률 100%) $\\rightarrow$ 아무도 놀라지 않습니다. 정보가 거의 없습니다.\n*   **의외의 일(확률 낮음):** \"갑자기 하늘에서 돈이 떨어진다.\" (확률 매우 낮음) $\\rightarrow$ 매우 놀랍습니다! 이 사건은 많은 정보를 담고 있습니다.\n*   즉, **확률이 낮을수록(희귀할수록) 정보량은 커집니다.**\n\n#### 🔢 수식 분석\n$$I(x) = \\log \\frac{1}{P(x)} = -\\log P(x)$$\n*   로그 함수를 사용하여 확률의 역수에 취합니다. (로그 밑이 2이면 단위는 **bits**입니다.)\n*   왜 로그를 쓸까요? 독립적인 두 사건이 동시에 일어날 때, 정보량은 **더해지는(Additive)** 성질을 갖게 하기 위해서입니다.\n\n---\n\n### 2. 엔트로피 (Entropy)\n\n#### 🔍 정의\n엔트로피 $H(X)$는 랜덤 변수 $X$가 가질 수 있는 모든 정보량의 **'기댓값(평균)'**입니다.\n\n#### 💡 직관적 이해\n*   **불확실성의 척도:** 사건이 얼마나 예측하기 어려운지를 나타냅니다.\n*   **질문 횟수:** 이 데이터를 전송하거나 설명하기 위해 필요한 평균적인 '예/아니오' 질문 횟수라고 생각하면 쉽습니다.\n\n#### 🔢 수식 분석\n$$H(X) = \\sum_{x \\in \\mathcal{X}} p(x) \\log \\frac{1}{p(x)} = \\mathbb{E}_p[I(X)]$$\n*   각 사건의 정보량($I(X)$)에 그 사건이 일어날 확률($p(x)$)을 곱해서 모두 더한 값입니다.\n\n---\n\n### 3. 특성 요약 (시험 단골 포인트!)\n\n*   **비음수성:** $H(X) \\geq 0$ (정보의 평균이 음수일 수는 없습니다.)\n*   **최소값 (0):** 어느 한 사건의 확률이 1일 때(결과가 100% 확실할 때) 엔트로피는 0입니다. 즉, 놀랄 일이 전혀 없는 상태입니다.\n*   **최대값 (Uniform Distribution):** 모든 사건의 확률이 동일할 때($1/n$) 불확실성이 가장 커지며, 이때 $H(X) = \\log n$이 됩니다.\n*   **단위:** 로그 밑이 2이면 **bits**, 자연로그($e$)이면 **nats**를 사용합니다.\n\n---\n\n### 4. 베르누이 엔트로피 예제 (2.1.1)\n\n#### 📝 상황 설정\n동전 던지기처럼 결과가 두 가지(0 또는 1)인 경우를 **베르누이 시행**이라고 합니다.\n*   $X=1$일 확률: $p$\n*   $X=0$일 확률: $1-p$\n\n#### ⚠️ 오개념 교정 포인트\n학생들이 자주 헷갈리는 부분은 **\"확률 $p$가 높으면 엔트로피도 높다?\"**는 생각입니다.\n*   **아닙니다!** 만약 $p=0.99$라면 결과가 거의 항상 1이 나올 것을 알기 때문에 불확실성(엔트로피)은 매우 낮습니다.\n*   엔트로피가 가장 높은 지점은 $p=0.5$일 때, 즉 **앞면과 뒷면이 나올 확률이 똑같아서 결과를 가장 예측하기 힘들 때**입니다. (이 내용은 2페이지 그래프에서 시각적으로 확인할 수 있습니다.)\n\n---\n\n**요약하자면:**\n1페이지에서는 **\"정보량은 놀람의 정도이고, 엔트로피는 그 놀람의 평균(불확실성)이다\"**라는 개념을 잡는 것이 핵심입니다.\n\n이해가 되지 않는 수식이나 개념이 있다면 언제든 질문해 주세요!",
+      "thoughtSummaryMarkdown": "**Initiating Explanation Process**\n\nI'm now tasked with explaining the content of page 1 of the PDF, assuming the reader's quiz performance suggests a need for a detailed breakdown. I've decided to structure the explanation using Definition, Intuition, Example, and Misconception, hopefully providing clarity through that framework.\n\n\n**Clarifying Page Content**\n\nNow, I'm focusing on the first page, specifically \"Chap2) Entropy (1).\" Section 1 defines Information Content with the formula $I(x) = \\log \\frac{1}{P(x)} = -\\log P(x)$. I'm also elaborating on the intuition: lower probability increases information/surprise. Section 2 defines Entropy, $H(X)$, as the expected information content, and offers the formula $H(X) = \\sum_{x \\in \\mathcal{X}} p(x) \\log \\frac{1}{p(x)}$. I am also summarising its properties, including units, non-negativity and special cases.",
+      "id": "msg_l3g5q0q9",
+      "createdAt": "2026-03-06T01:17:41.070Z"
+    },
+    {
+      "role": "assistant",
+      "agent": "ORCHESTRATOR",
+      "contentMarkdown": "복습을 완료했습니다. 재시험을 진행할까요?",
+      "widget": {
+        "type": "BINARY_CHOICE",
+        "decisionType": "RETEST_DECISION"
+      },
+      "id": "msg_kfgv8k2f",
+      "createdAt": "2026-03-06T01:17:41.070Z",
+      "thoughtSummaryMarkdown": "복습 수락 여부를 바탕으로 복습 설명 호출 또는 종료 분기를 수행합니다."
+    }
+  ],
+  "quizzes": [
+    {
+      "id": "quiz_entropy_01",
+      "quizType": "OX",
+      "createdFromPage": 1,
+      "createdAt": "2026-03-06T01:13:29.656Z",
+      "quizJson": {
+        "schemaVersion": "1.0",
+        "quizId": "quiz_entropy_01",
+        "quizType": "OX",
+        "page": 1,
+        "questions": [
+          {
+            "id": "q1",
+            "promptMarkdown": "정보량(Information Content)은 특정 사건의 발생 확률이 낮을수록 그 값이 커진다.",
+            "points": 10,
+            "answer": {
+              "value": true
+            }
+          },
+          {
+            "id": "q2",
+            "promptMarkdown": "엔트로피(Entropy)의 단위로 'bits'를 사용하는 것은 로그의 밑(base)이 10일 때를 의미한다.",
+            "points": 10,
+            "answer": {
+              "value": false
+            }
+          },
+          {
+            "id": "q3",
+            "promptMarkdown": "확률 분포가 균등 분포(Uniform Distribution)일 때 엔트로피는 최댓값을 가진다.",
+            "points": 10,
+            "answer": {
+              "value": true
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "quiz_chap2_entropy_p1",
+      "quizType": "OX",
+      "createdFromPage": 1,
+      "createdAt": "2026-03-06T01:15:16.534Z",
+      "quizJson": {
+        "schemaVersion": "1.0",
+        "quizId": "quiz_chap2_entropy_p1",
+        "quizType": "OX",
+        "page": 1,
+        "questions": [
+          {
+            "id": "q1",
+            "promptMarkdown": "정보량(Information Content)은 어떤 사건의 발생 확률이 낮을수록 커지며, 이는 예측하기 어려운 사건일수록 더 많은 정보를 담고 있음을 의미한다.",
+            "points": 10,
+            "answer": {
+              "value": true
+            }
+          },
+          {
+            "id": "q2",
+            "promptMarkdown": "특정 사건 $x$의 발생 확률이 $p(x) = 1$인 경우, 사건이 완전 확실하므로 엔트로피 $H(X)$는 최댓값을 가진다.",
+            "points": 10,
+            "answer": {
+              "value": false
+            }
+          },
+          {
+            "id": "q3",
+            "promptMarkdown": "엔트로피 $H(X)$는 확률 분포가 균등 분포(Uniform Distribution)일 때 최댓값을 가지며, 로그의 밑이 2일 때 단위는 bits이다.",
+            "points": 10,
+            "answer": {
+              "value": true
+            }
+          }
+        ]
+      },
+      "userAnswers": {
+        "q1": false,
+        "q2": true,
+        "q3": false
+      },
+      "grading": {
+        "status": "GRADED",
+        "score": 0,
+        "maxScore": 30,
+        "scoreRatio": 0,
+        "items": [
+          {
+            "questionId": "q1",
+            "score": 0,
+            "maxScore": 10,
+            "verdict": "WRONG",
+            "feedbackMarkdown": "오답입니다."
+          },
+          {
+            "questionId": "q2",
+            "score": 0,
+            "maxScore": 10,
+            "verdict": "WRONG",
+            "feedbackMarkdown": "오답입니다."
+          },
+          {
+            "questionId": "q3",
+            "score": 0,
+            "maxScore": 10,
+            "verdict": "WRONG",
+            "feedbackMarkdown": "오답입니다."
+          }
+        ],
+        "summaryMarkdown": "총점 0/30"
+      }
+    }
+  ],
+  "feedback": [],
+  "learnerModel": {
+    "level": "INTERMEDIATE",
+    "confidence": 0.5,
+    "weakConcepts": [],
+    "strongConcepts": []
+  },
+  "conversationSummary": "ORCHESTRATOR: 학습 세션에 오신 것을 환영합니다. 현재 1페이지입니다.\n\n바로 설명부터 시작할까요?\nORCHESTRATOR: 1페이지 설명을 시작합니다.\nEXPLAINER: 안녕하세요! 현재 보고 계신 **1페이지**의 핵심 내용을 정리해 드리겠습니다.\n\n### **1페이지: 정보량과 엔트로피의 기본 개념**\n\n**1. 정보량 (Information Content)**\n1페이지 상단에서는 '정보량'을 정의합니다. 정보량이란 어떤 사건 $x$가 발생했을 때 얻는 **놀람(Surprise)의 정도**를 말합니다.\n*   **수식:** $I(x) = \\log \\frac{1}{P(x)}$\n*   **특징:** 확률이 낮을수록(발생하기 어려울수록) 그 사건이 일어났을 때 얻는 정보량은 많아집니다. 즉, 예측하기 힘든 사건일수록 정보 가치가 높다는 뜻입니다.\n\n**2. 엔트로피 (Entropy)**\n1페이지 중반부터는 '엔트로피'를 다룹니다. 엔트로피는 랜덤 변수 $X$가 가지는 **기대 정보량**을 의미합니다.\n*   **정의:** 사건이 얼마나 예측하기 어려운지를 수치로 나타낸 것입니다.\n*   **수식:** $H(X) = \\sum_{x \\in \\mathcal{X}} p(x) \\log \\frac{1}{p(x)}$ 또는 기댓값 형태인 $\\mathbb{E}_p[I(X)]$로 표현합니다.\n*   **해석:** 엔트로피는 각 사건 정보량의 '평균값'이라고 이해하면 쉽습니다.\n\n**3. 엔트로피의 주요 특성**\n1페이지의 '특성 요약' 부분에 명시된 핵심 성질들입니다.\n*   **단위:** 로그의 밑을 2로 사용할 때 단위는 **bits**가 됩니다.\n*   **항상 0 이상:** $H(X) \\ge 0$이며, 결과가 100% 확실하여 $p(x)=1$인 경우 정보가 없으므로 엔트로피는 0이 됩니다.\n*   **최대값:** 모든 사건의 확률이 동일한 **균등 분포(Uniform Distribution)**일 때 불확실성이 가장 크며, 이때 엔트로피는 $H(X) = \\log n$으로 최대가 됩니다.\n\n**4. 베르누이 엔트로피 예제**\n1페이지 하단에서는 가장 단순한 형태인 **베르누이 시행(결과가 0 또는 1)**에 대한 엔트로피 정의를 시작합니다. 확률 $p$로 1이 나오고, $1-p$로 0이 나오는 경우의 엔트로피 계산식은 다음 페이지로 이어지게 됩니다.\n\n이처럼 1페이지는 정보 이론의 가장 기초가 되는 정보량과 엔트로피의 정의 및 성질을 핵심적으로 요약하고 있습니다. 추가로 궁금한 점이 있다면 말씀해 주세요!\nORCHESTRATOR: 현재 페이지 설명이 끝났습니다. 퀴즈를 진행할까요?\nORCHESTRATOR: 퀴즈 유형을 선택해 주세요.\nQUIZ: 1페이지 퀴즈가 생성되었습니다. 퀴즈 모달에서 응시해 주세요.\nQUIZ: 1페이지 퀴즈가 생성되었습니다. 퀴즈 모달에서 응시해 주세요.\nGRADER: 채점 완료: **0/30**\nORCHESTRATOR: 점수가 기준 미달입니다. 복습을 진행할까요?\nEXPLAINER: 안녕하세요! 정보이론의 핵심인 **엔트로피(Entropy)** 공부를 돕기 위해 1페이지 내용을 상세히 설명해 드리겠습니다. 퀴즈 성적을 올리기 위해서는 단순 암기보다 각 개념이 갖는 **직관적인 의미**를 파악하는 것이 중요합니다.\n\n---\n\n## 📄 [1페이지] 정보량과 엔트로피의 기초\n\n### 1. 정보량 (Information Content)\n\n#### 🔍 정의\n정보량 $I(x)$는 어떤 사건 $x$가 발생했을 때 우리가 느끼는 **'놀람(Surprise)의 정도'**를 수치화한 것입니다.\n\n#### 💡 직관적 이해\n*   **당연한 일(확률 높음):** \"내일 해가 동쪽에서 뜬다.\" (확률 100%) $\\rightarrow$ 아무도 놀라지 않습니다. 정보가 거의 없습니다.\n*   **의외의 일(확률 낮음):** \"갑자기 하늘에서 돈이 떨어진다.\" (확률 매우 낮음) $\\rightarrow$ 매우 놀랍습니다! 이 사건은 많은 정보를 담고 있습니다.\n*   즉, **확률이 낮을수록(희귀할수록) 정보량",
+  "updatedAt": "2026-03-06T01:17:41.070Z"
+}

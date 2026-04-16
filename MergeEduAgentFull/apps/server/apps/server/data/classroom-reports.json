@@ -1,0 +1,190 @@
+[
+  {
+    "schemaVersion": "1.0",
+    "classroomId": "cls_m35o872q",
+    "classroomTitle": "선형회귀 데모 강의실",
+    "studentLabel": "현재 학습자",
+    "generatedAt": "2026-04-15T11:22:08.082Z",
+    "analysisStatus": "READY",
+    "generationMode": "AI_ANALYZED",
+    "headline": "구체적인 질문을 통해 개념의 사각지대를 메우며 성장하는 단계입니다.",
+    "summaryMarkdown": "- 1개 세션에서 진도율 53%를 기록 중이며, 퀴즈 평균 점수는 78점입니다.\n- 주관식 문항(93점)에서 강점을 보이나, 로지스틱 회귀와의 개념 구분 등 기초 이론 정립이 더 필요합니다.\n- 질문의 질이 매우 높아 실무적 관점의 오차 지표 해석 능력이 빠르게 향상될 것으로 기대됩니다.",
+    "overallScore": 75,
+    "overallLevel": "PROFICIENT",
+    "competencies": [
+      {
+        "key": "CONCEPT_UNDERSTANDING",
+        "label": "개념 이해도",
+        "score": 72,
+        "trend": "STEADY",
+        "summary": "회귀 모델의 목적과 코드 흐름은 잘 파악하고 있으나, 로지스틱 회귀와의 차이 등 타겟 유형에 따른 구분은 보완이 필요합니다.",
+        "evidence": [
+          "회귀 목적 이해",
+          "로지스틱 회귀 타겟 유형 혼동 피드백",
+          "실습 코드 흐름 이해"
+        ]
+      },
+      {
+        "key": "QUESTION_QUALITY",
+        "label": "질문 구체성",
+        "score": 88,
+        "trend": "UP",
+        "summary": "MSE/RMSE의 실무적 차이, fit 함수의 학습 대상 등 학습 병목을 정확히 짚어내는 수준 높은 질문을 던집니다.",
+        "evidence": [
+          "MSE와 RMSE의 실무적 차이 질문",
+          "fit 함수 학습 대상 질문",
+          "1주차 - Linear Regression · 5. Linear Regression: MSE와 RMSE 차이는 제곱을 씌우느냐 말고 실무적으로 뭐가 다른가요?"
+        ]
+      },
+      {
+        "key": "PROBLEM_SOLVING",
+        "label": "문제 해결력",
+        "score": 78,
+        "trend": "STEADY",
+        "summary": "객관식보다는 주관식 에세이에서 훨씬 높은 정답률을 보이며 논리적인 답변 구성 능력을 증명했습니다.",
+        "evidence": [
+          "ESSAY 퀴즈 93점",
+          "SHORT 퀴즈 75점",
+          "1주차 - Linear Regression · 5. Linear Regression p.6 SHORT 75점"
+        ]
+      },
+      {
+        "key": "APPLICATION_TRANSFER",
+        "label": "응용·전이력",
+        "score": 65,
+        "trend": "STEADY",
+        "summary": "이론을 실제 사례나 코드로 연결하려는 시도가 돋보이나, 아직 회귀 가정을 실제 사례에 대입하는 부분은 연습이 필요합니다.",
+        "evidence": [
+          "회귀 가정 4가지를 사례와 함께 설명하기 목표",
+          "상관관계와 인과관계 예시 이해도 상승",
+          "회귀 가정 4가지를 사례와 함께 설명하기"
+        ]
+      },
+      {
+        "key": "QUIZ_ACCURACY",
+        "label": "퀴즈 정확도",
+        "score": 78,
+        "trend": "STEADY",
+        "summary": "전반적인 퀴즈 성취도는 70점대 후반으로 안정적이며, 난이도가 높은 주관식에서 성과가 더 좋습니다.",
+        "evidence": [
+          "평균 퀴즈 점수 78점",
+          "MCQ 67점 vs ESSAY 93점",
+          "1주차 - Linear Regression · 5. Linear Regression p.2 MCQ 67점"
+        ]
+      },
+      {
+        "key": "LEARNING_PERSISTENCE",
+        "label": "학습 지속성",
+        "score": 55,
+        "trend": "STEADY",
+        "summary": "단일 세션 내에서 절반 이상의 진도를 소화했으며, 학습 중단 없이 꾸준한 진행이 필요합니다.",
+        "evidence": [
+          "페이지 커버리지 53% (9/17페이지)",
+          "세션 1회 참여",
+          "1주차 - Linear Regression · 5. Linear Regression: 진도 9/17페이지, 약점 회귀 가정 설명, RMSE 해석 표현"
+        ]
+      },
+      {
+        "key": "SELF_REFLECTION",
+        "label": "오답 성찰력",
+        "score": 74,
+        "trend": "UP",
+        "summary": "피드백을 통해 상관관계와 인과관계의 차이를 교정하는 등 자신의 약점을 적극적으로 보완하고 있습니다.",
+        "evidence": [
+          "상관관계/인과관계 피드백 후 이해도 상승",
+          "피드백 수 4건",
+          "1주차 - Linear Regression · 5. Linear Regression p.6: - MAE/MSE/RMSE 차이를 말로 비교할 때 단위와 이상치 민감도를 같이 정리하면 좋다."
+        ]
+      },
+      {
+        "key": "CLASS_PARTICIPATION",
+        "label": "수업 참여도",
+        "score": 85,
+        "trend": "UP",
+        "summary": "학습 페이지 수 대비 질문 빈도가 매우 높으며, 피드백에 대한 반응도 적극적입니다.",
+        "evidence": [
+          "9페이지 학습 중 질문 4건 발생",
+          "피드백 4건 반영",
+          "질문 4건"
+        ]
+      },
+      {
+        "key": "CONFIDENCE_GROWTH",
+        "label": "학습 자신감",
+        "score": 74,
+        "trend": "STEADY",
+        "summary": "스스로 평가하는 자신감 지수가 안정적이며, 고득점 경험을 통해 상승 여력이 충분합니다.",
+        "evidence": [
+          "평균 자신감 0.74",
+          "주관식 93점 성취",
+          "학습자 confidence 74점"
+        ]
+      },
+      {
+        "key": "IMPROVEMENT_MOMENTUM",
+        "label": "성장 모멘텀",
+        "score": 70,
+        "trend": "STEADY",
+        "summary": "학습 후반부로 갈수록 고득점을 기록하는 경향이 있어, 다음 모듈에서도 빠른 적응이 예상됩니다.",
+        "evidence": [
+          "최근 ESSAY 퀴즈 93점",
+          "코칭 목표 3건 수립",
+          "퀴즈 추세 변화 +0.0점"
+        ]
+      }
+    ],
+    "strengths": [
+      "회귀 분석의 목적 및 실습 코드 흐름 파악",
+      "주관식(ESSAY) 답변 구성 능력 탁월",
+      "학습 병목을 파악하는 구체적인 질문 생성력"
+    ],
+    "growthAreas": [
+      "선형 회귀의 4가지 기본 가정 숙지",
+      "MSE/RMSE의 단위 및 이상치 민감도 차이 이해",
+      "로지스틱 회귀와 선형 회귀의 타겟 변수 차이 명확화"
+    ],
+    "coachingInsights": [
+      "개념 설명 직후 예시를 연결하는 방식을 선호하므로, 회귀 가정을 설명할 때 실데이터 사례를 함께 제시하세요.",
+      "MAE/MSE/RMSE의 차이를 비교표 형태로 정리해주면 학습자가 훨씬 빠르게 습득할 수 있습니다.",
+      "fit 함수가 학습하는 파라미터(기울기, 절편)를 코드로 시각화하여 보여주는 것이 효과적입니다."
+    ],
+    "recommendedActions": [
+      {
+        "title": "회귀 분석 4대 가정 사례 학습",
+        "description": "선형성, 독립성, 등분산성, 정규성 가정이 깨졌을 때의 실제 그래프 사례를 복습하세요."
+      },
+      {
+        "title": "오차 지표 비교표 작성",
+        "description": "본인의 선호도에 맞춰 MAE, MSE, RMSE의 특징과 실무적 장단점을 비교표로 정리해보세요."
+      },
+      {
+        "title": "분류 vs 회귀 타겟 구분",
+        "description": "로지스틱 회귀가 왜 분류 모델인지, 선형 회귀와 출력값의 형태가 어떻게 다른지 다시 확인하세요."
+      }
+    ],
+    "lectureInsights": [
+      {
+        "lectureId": "lec_linear_regression_demo",
+        "lectureTitle": "5. Linear Regression",
+        "weekTitle": "1주차 - Linear Regression",
+        "questionCount": 4,
+        "quizCount": 3,
+        "averageQuizScore": 78,
+        "masteryLabel": "성장세"
+      }
+    ],
+    "sourceStats": {
+      "lectureCount": 1,
+      "sessionCount": 1,
+      "completedPageCount": 9,
+      "pageCoverageRatio": 0.5294117647058824,
+      "questionCount": 4,
+      "quizCount": 3,
+      "gradedQuizCount": 3,
+      "averageQuizScore": 78,
+      "feedbackCount": 4,
+      "memoryRefreshCount": 1
+    },
+    "dataQualityNote": "1개 세션의 데이터를 바탕으로 작성되었습니다. 학습량이 누적됨에 따라 리포트의 정밀도가 향상됩니다."
+  }
+]

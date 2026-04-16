@@ -405,3 +405,435 @@ select:focus-visible {
   outline: 2px solid rgba(47, 114, 214, 0.44);
   outline-offset: 2px;
 }
+
+.report-page {
+  display: grid;
+  gap: 18px;
+}
+
+.report-back-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--accent);
+}
+
+.report-meta-strip {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  align-items: center;
+  padding: 12px 16px;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.report-meta-strip strong {
+  color: var(--text);
+}
+
+.report-empty-state {
+  padding: 22px;
+  background:
+    radial-gradient(circle at top left, rgba(47, 114, 214, 0.08), transparent 30%),
+    linear-gradient(145deg, rgba(255, 255, 255, 0.96), rgba(247, 250, 255, 0.92));
+}
+
+.report-progress-card {
+  padding: 18px;
+  background:
+    radial-gradient(circle at top left, rgba(68, 183, 216, 0.12), transparent 30%),
+    linear-gradient(140deg, rgba(255, 255, 255, 0.97), rgba(245, 249, 255, 0.94));
+}
+
+.report-progress-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.report-progress-head p {
+  margin: 6px 0 0;
+  color: var(--muted);
+}
+
+.report-progress-percent {
+  min-width: 58px;
+  text-align: right;
+  font-size: 28px;
+  font-weight: 800;
+  color: var(--accent);
+}
+
+.report-progress-track {
+  height: 12px;
+  border-radius: 999px;
+  overflow: hidden;
+  background: rgba(18, 34, 64, 0.08);
+  margin-top: 14px;
+}
+
+.report-progress-fill {
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #1f89c7, #44b7d8);
+  transition: width 0.35s ease;
+}
+
+.report-progress-steps {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 14px;
+}
+
+.report-progress-step {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 6px 10px;
+  font-size: 12px;
+  font-weight: 700;
+  border: 1px solid rgba(18, 34, 64, 0.1);
+  background: rgba(255, 255, 255, 0.82);
+  color: var(--muted);
+}
+
+.report-progress-step.active {
+  color: #ffffff;
+  border-color: transparent;
+  background: linear-gradient(140deg, var(--accent), var(--accent-2));
+}
+
+.report-progress-step.done {
+  color: #0b6b56;
+  border-color: rgba(11, 107, 86, 0.16);
+  background: rgba(226, 248, 241, 0.96);
+}
+
+.report-progress-note {
+  margin-top: 14px;
+  border-radius: 12px;
+  padding: 10px 12px;
+  font-size: 13px;
+  color: #8b5e13;
+  background: rgba(255, 247, 219, 0.92);
+  border: 1px solid rgba(217, 119, 6, 0.18);
+}
+
+.report-thought-stream {
+  margin-top: 14px;
+  border-radius: 16px;
+  padding: 14px;
+  border: 1px solid rgba(18, 34, 64, 0.08);
+  background: rgba(255, 255, 255, 0.86);
+  max-height: 260px;
+  overflow: auto;
+}
+
+.report-thought-stream-head {
+  font-size: 12px;
+  font-weight: 800;
+  color: var(--muted);
+  margin-bottom: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.report-hero {
+  padding: 22px;
+  background:
+    radial-gradient(circle at top right, rgba(68, 183, 216, 0.14), transparent 32%),
+    linear-gradient(145deg, rgba(255, 255, 255, 0.96), rgba(244, 248, 255, 0.92));
+}
+
+.report-hero-main {
+  display: flex;
+  justify-content: space-between;
+  gap: 18px;
+  align-items: center;
+}
+
+.report-badges {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.report-badge {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 6px 10px;
+  font-size: 12px;
+  font-weight: 800;
+  color: #f8fbff;
+  background: linear-gradient(140deg, var(--accent), var(--accent-2));
+}
+
+.report-badge.subtle {
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.8);
+  border: 1px solid rgba(18, 34, 64, 0.1);
+}
+
+.report-badge.warning {
+  background: linear-gradient(140deg, #f59e0b, #d97706);
+}
+
+.report-score-ring {
+  width: 164px;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background:
+    conic-gradient(from 210deg, var(--accent) 0deg, var(--accent-2) 230deg, rgba(18, 34, 64, 0.08) 230deg);
+  padding: 14px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.8);
+}
+
+.report-score-ring-inner {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.94);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+
+.report-score-ring-inner strong {
+  font-size: 44px;
+  line-height: 1;
+}
+
+.report-score-ring-inner span {
+  font-size: 13px;
+  color: var(--muted);
+  margin-top: 6px;
+}
+
+.report-stat-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  gap: 10px;
+  margin-top: 18px;
+}
+
+.report-stat-chip {
+  border-radius: 16px;
+  padding: 12px 14px;
+  background: rgba(255, 255, 255, 0.74);
+  border: 1px solid rgba(18, 34, 64, 0.08);
+}
+
+.report-stat-chip span {
+  display: block;
+  font-size: 12px;
+  color: var(--muted);
+  margin-bottom: 6px;
+}
+
+.report-stat-chip strong {
+  font-size: 20px;
+}
+
+.report-summary-grid,
+.report-insight-grid {
+  display: grid;
+  gap: 16px;
+}
+
+.report-summary-grid {
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 0.8fr);
+}
+
+.report-summary-card,
+.report-side-card,
+.report-competency-panel,
+.report-lecture-panel {
+  padding: 18px;
+}
+
+.report-top-score-list,
+.report-action-list,
+.report-lecture-list {
+  display: grid;
+  gap: 10px;
+}
+
+.report-top-score-item,
+.report-action-item,
+.report-lecture-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 0;
+  border-top: 1px solid rgba(18, 34, 64, 0.08);
+}
+
+.report-top-score-item:first-child,
+.report-action-item:first-child,
+.report-lecture-row:first-child {
+  border-top: none;
+  padding-top: 0;
+}
+
+.report-top-score-item p,
+.report-action-item p,
+.report-lecture-row p {
+  margin: 6px 0 0;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.report-top-score-item span {
+  font-size: 28px;
+  font-weight: 800;
+  color: var(--accent);
+}
+
+.report-section-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: flex-start;
+  margin-bottom: 16px;
+}
+
+.report-competency-list {
+  display: grid;
+  gap: 12px;
+}
+
+.report-competency-item {
+  padding: 14px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.64);
+  border: 1px solid rgba(18, 34, 64, 0.08);
+}
+
+.report-competency-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.report-competency-header p {
+  margin: 6px 0 0;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.report-competency-meta {
+  text-align: right;
+  min-width: 74px;
+}
+
+.report-competency-meta strong {
+  display: block;
+  font-size: 28px;
+  line-height: 1;
+}
+
+.report-competency-meta span {
+  display: block;
+  margin-top: 6px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.report-score-track {
+  margin-top: 12px;
+  height: 12px;
+  border-radius: 999px;
+  overflow: hidden;
+  background: rgba(18, 34, 64, 0.08);
+}
+
+.report-score-fill {
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--accent), var(--accent-2));
+  animation: growBar 0.7s ease-out;
+}
+
+@keyframes growBar {
+  from {
+    width: 0;
+  }
+}
+
+.report-evidence-list {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 12px;
+}
+
+.report-evidence-pill {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 6px 10px;
+  font-size: 12px;
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.9);
+  border: 1px solid rgba(18, 34, 64, 0.08);
+}
+
+.report-insight-grid {
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+}
+
+.report-list {
+  margin: 0;
+  padding-left: 18px;
+  display: grid;
+  gap: 10px;
+  color: var(--text);
+}
+
+.report-lecture-metrics {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.report-lecture-metrics strong {
+  color: var(--text);
+}
+
+@media (max-width: 900px) {
+  .report-summary-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .report-progress-head,
+  .report-hero-main,
+  .report-competency-header,
+  .report-top-score-item,
+  .report-lecture-row {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .report-score-ring {
+    width: 132px;
+  }
+
+  .report-lecture-metrics {
+    justify-content: flex-start;
+  }
+}

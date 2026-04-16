@@ -125,6 +125,11 @@ export function ClassroomRoute() {
       <div className="heading">
         <h1 style={{ margin: 0 }}>강의실 주차</h1>
         <div className="heading-actions">
+          {classroomId ? (
+            <Link className="btn ghost" to={`/classrooms/${classroomId}/report`}>
+              학생 리포트 보기
+            </Link>
+          ) : null}
           <button className="btn" onClick={onAddWeek}>
             + 주차 추가
           </button>

@@ -9,9 +9,20 @@ from typing import Any, Iterator
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
+from dotenv import load_dotenv
 
 from google import genai
 from google.genai import types
+
+
+ENV_CANDIDATES = [
+    Path.cwd() / ".env",
+    Path(__file__).resolve().parents[2] / ".env",
+]
+for env_path in ENV_CANDIDATES:
+    if env_path.exists():
+        load_dotenv(env_path, override=False)
+        break
 
 
 class FileRef(BaseModel):
@@ -46,6 +57,7 @@ class QaRequest(BaseModel):
     pageText: str
     neighborText: dict[str, str]
     learnerMemoryDigest: str | None = None
+    qaThreadDigest: str | None = None
 
 
 class GenerateQuizRequest(BaseModel):
@@ -80,6 +92,12 @@ class OrchestratorThoughtStreamRequest(BaseModel):
 class OrchestrateSessionStreamRequest(BaseModel):
     model: str
     fileRef: FileRef
+    prompt: str
+    responseJsonSchema: dict[str, Any]
+
+
+class AnalyzeStudentReportRequest(BaseModel):
+    model: str
     prompt: str
     responseJsonSchema: dict[str, Any]
 
@@ -336,6 +354,68 @@ def _iter_stream_events(
     )
 
 
+def _iter_prompt_stream_events(
+    *,
+    client: genai.Client,
+    model: str,
+    prompt: str,
+    response_json_schema: dict[str, Any] | None = None,
+) -> Iterator[bytes]:
+    thought_chunks: list[str] = []
+    answer_chunks: list[str] = []
+
+    try:
+        config_kwargs: dict[str, Any] = {
+            "thinking_config": types.ThinkingConfig(include_thoughts=True),
+        }
+        if response_json_schema is not None:
+            config_kwargs["response_mime_type"] = "application/json"
+            config_kwargs["response_json_schema"] = response_json_schema
+
+        stream = client.models.generate_content_stream(
+            model=model,
+            contents=[prompt],
+            config=types.GenerateContentConfig(**config_kwargs),
+        )
+
+        for chunk in stream:
+            content = _response_content_dict(chunk)
+            if not content:
+                continue
+            for part in content.get("parts", []):
+                if not isinstance(part, dict):
+                    continue
+                text = part.get("text")
+                if not isinstance(text, str) or not text:
+                    continue
+                if bool(part.get("thought", False)):
+                    thought_chunks.append(text)
+                    yield _ndjson_line({"type": "thought_delta", "text": text})
+                else:
+                    answer_chunks.append(text)
+                    yield _ndjson_line({"type": "answer_delta", "text": text})
+    except Exception as exc:  # noqa: BLE001
+        yield _ndjson_line({"type": "error", "error": f"Gemini streaming failed: {exc}"})
+        return
+
+    answer_text = "".join(answer_chunks).strip()
+    thought_text = "".join(thought_chunks).strip()
+    safe_content = {
+        "role": "model",
+        "parts": ([{"text": thought_text, "thought": True}] if thought_text else [])
+        + ([{"text": answer_text}] if answer_text else []),
+    }
+
+    yield _ndjson_line(
+        {
+            "type": "done",
+            "content": safe_content,
+            "answerText": answer_text,
+            "thoughtSummary": thought_text,
+        }
+    )
+
+
 def _extract_json(text: str) -> dict[str, Any]:
     text = text.strip()
     if not text:
@@ -463,6 +543,9 @@ def answer_question(request: QaRequest) -> dict[str, Any]:
 {request.learnerMemoryDigest or "(개인화 메모리 없음)"}
 현재 페이지: {request.page}
 질문: {request.question}
+
+이전 QA 문맥(이전 질문/답변만, 설명 내용은 제외):
+{request.qaThreadDigest or "(이전 QA 문맥 없음)"}
 
 현재 페이지 텍스트:
 {request.pageText}
@@ -594,6 +677,56 @@ def grade_quiz(request: GradeQuizRequest) -> dict[str, Any]:
     }
 
 
+@app.post("/bridge/analyze_student_report")
+def analyze_student_report(request: AnalyzeStudentReportRequest) -> dict[str, Any]:
+    client = _get_client()
+
+    try:
+        response = client.models.generate_content(
+            model=request.model,
+            contents=[request.prompt],
+            config=types.GenerateContentConfig(
+                thinking_config=types.ThinkingConfig(include_thoughts=True),
+                response_mime_type="application/json",
+                response_json_schema=request.responseJsonSchema,
+            ),
+        )
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=500, detail=f"Gemini student report failed: {exc}") from exc
+
+    content = _response_content_dict(response)
+    text = _content_text(content)
+
+    try:
+        parsed = _extract_json(text)
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=500, detail=f"Failed to parse student report JSON: {exc}") from exc
+
+    return {
+        "ok": True,
+        "content": content,
+        "data": parsed,
+        "thoughtSummary": _thought_summary_text(content),
+    }
+
+
+@app.post("/bridge/analyze_student_report_stream")
+def analyze_student_report_stream(
+    request: AnalyzeStudentReportRequest,
+) -> StreamingResponse:
+    client = _get_client()
+
+    return StreamingResponse(
+        _iter_prompt_stream_events(
+            client=client,
+            model=request.model,
+            prompt=request.prompt,
+            response_json_schema=request.responseJsonSchema,
+        ),
+        media_type="application/x-ndjson",
+    )
+
+
 @app.post("/bridge/explain_page_stream")
 def explain_page_stream(request: ExplainRequest) -> StreamingResponse:
     client = _get_client()
@@ -620,6 +753,9 @@ def answer_question_stream(request: QaRequest) -> StreamingResponse:
 {request.learnerMemoryDigest or "(개인화 메모리 없음)"}
 현재 페이지: {request.page}
 질문: {request.question}
+
+이전 QA 문맥(이전 질문/답변만, 설명 내용은 제외):
+{request.qaThreadDigest or "(이전 QA 문맥 없음)"}
 
 현재 페이지 텍스트:
 {request.pageText}

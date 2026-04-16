@@ -1,0 +1,312 @@
+{
+  "schemaVersion": "1.0",
+  "sessionId": "ses_lec_fqi4iv1n",
+  "lectureId": "lec_fqi4iv1n",
+  "currentPage": 2,
+  "pageStates": [
+    {
+      "page": 1,
+      "status": "DONE",
+      "lastTouchedAt": "2026-03-06T01:20:08.736Z",
+      "explainSummary": "안녕하세요! 현재 보고 계신 **1페이지**의 핵심 내용을 정리해 드리겠습니다.\n\n### 1. 정보량 (Information Content)\n**1페이지**에서는 정보이론의 가장 기초가 되는 '정보량'의 개념을 설명합니다.\n*   **정의:** 어떤 사건 $x$가 발생했을 때 느끼는 '놀람(Surprise)'의 정도를 수치화한 것입니다.\n*   **특징:** 확률이 낮을수록(드문 사건일수록) 예측하기 어렵기 때문에 발생했을 때 더 많은 정보를 제공하며, 정보량 $I(x)$는 높아집니다.\n*   **수식:** $I(x) = \\log ",
+      "explainMarkdown": "안녕하세요! 현재 보고 계신 **1페이지**의 핵심 내용을 정리해 드리겠습니다.\n\n### 1. 정보량 (Information Content)\n**1페이지**에서는 정보이론의 가장 기초가 되는 '정보량'의 개념을 설명합니다.\n*   **정의:** 어떤 사건 $x$가 발생했을 때 느끼는 '놀람(Surprise)'의 정도를 수치화한 것입니다.\n*   **특징:** 확률이 낮을수록(드문 사건일수록) 예측하기 어렵기 때문에 발생했을 때 더 많은 정보를 제공하며, 정보량 $I(x)$는 높아집니다.\n*   **수식:** $I(x) = \\log \\frac{1}{P(x)}$\n\n### 2. 엔트로피 (Entropy)\n**1페이지** 중단부에서는 정보량을 바탕으로 한 '엔트로피'의 정의를 다룹니다.\n*   **의미:** 랜덤 변수 $X$가 가질 수 있는 모든 정보량의 **기댓값(평균)**입니다. 즉, 사건이 얼마나 예측하기 어려운지(불확실성)를 나타내는 지표입니다.\n*   **수식:** $H(X) = \\sum_{x \\in \\mathcal{X}} p(x) \\log \\frac{1}{p(x)} = \\mathbb{E}_p[I(X)]$\n\n### 3. 엔트로피의 주요 특성\n**1페이지** 하단에 요약된 엔트로피의 성질은 다음과 같습니다.\n*   **단위:** 로그의 밑을 2로 사용할 경우 단위는 **bits**가 됩니다.\n*   **항상 0 이상:** $H(X) \\geq 0$이며, 결과가 100% 확실하여 $p(x)=1$인 경우 엔트로피는 0(불확실성 없음)이 됩니다.\n*   **균등 분포일 때 최대:** 모든 사건이 일어날 확률이 같을 때($p(x) = 1/n$) 불확실성이 가장 크며, 이때 $H(X) = \\log n$입니다.\n\n### 4. 베르누이 엔트로피 예제\n**1페이지** 마지막 부분에서는 가장 간단한 확률 모델인 베르누이 분포(결과가 0 또는 1인 경우)의 엔트로피를 구하기 위한 확률 변수 설정을 보여주며 다음 페이지로 이어집니다.\n\n이어서 2페이지의 계산 과정을 보시면 엔트로피가 확률 $p$에 따라 어떻게 변하는지 확인하실 수 있습니다!",
+      "quiz": {
+        "lastQuizId": "quiz_chap2_entropy_p1",
+        "bestScoreRatio": 0.6666666666666666
+      }
+    },
+    {
+      "page": 2,
+      "status": "QUIZ_IN_PROGRESS",
+      "lastTouchedAt": "2026-03-18T13:55:25.649Z",
+      "explainSummary": "제2페이지에서는 **베르누이 분포의 엔트로피 특징**과 **엔트로피 계산 예제**, 그리고 **결합 엔트로피(Joint Entropy)**의 정의를 다루고 있습니다. 주요 내용은 다음과 같습니다.\n\n### 1. 베르누이 엔트로피의 특징 (2페이지 상단)\n1페이지에서 정의한 베르누이 시행($X$)에 대한 엔트로피 $H(p)$의 성질을 그래프와 함께 설명합니다.\n*   **함수 형태:** 엔트로피 $H(p)$는 **위로 볼록한(concave)** 형태를 가집니다.\n*   **최솟값 ($H(p)=0$):** $p=0$ 또는 $p=1$일 ",
+      "explainMarkdown": "제2페이지에서는 **베르누이 분포의 엔트로피 특징**과 **엔트로피 계산 예제**, 그리고 **결합 엔트로피(Joint Entropy)**의 정의를 다루고 있습니다. 주요 내용은 다음과 같습니다.\n\n### 1. 베르누이 엔트로피의 특징 (2페이지 상단)\n1페이지에서 정의한 베르누이 시행($X$)에 대한 엔트로피 $H(p)$의 성질을 그래프와 함께 설명합니다.\n*   **함수 형태:** 엔트로피 $H(p)$는 **위로 볼록한(concave)** 형태를 가집니다.\n*   **최솟값 ($H(p)=0$):** $p=0$ 또는 $p=1$일 때입니다. 이는 결과가 항상 0이거나 항상 1인 상태로, 불확실성이 전혀 없음을 의미합니다.\n*   **최댓값 ($H(p)=1$ bit):** **$p=0.5$**일 때 엔트로피가 최대가 됩니다. 0과 1이 나올 확률이 동등할 때 가장 예측하기 어렵기(불확실성이 높기) 때문입니다.\n\n### 2. 엔트로피 단순 계산 예제 (Example 2.1.2)\n2페이지 중간에서는 주어진 확률 질량 함수(PMF)를 이용해 실제 엔트로피를 구하는 과정을 보여줍니다.\n*   **확률 분포:** $P(a)=1/2, P(b)=1/4, P(c)=1/8, P(d)=1/8$\n*   **계산 과정:** 각 사건의 정보량($\\log \\frac{1}{p(x)}$)에 해당 확률을 곱해 모두 더합니다.\n    *   $H(X) = \\frac{1}{2}(1) + \\frac{1}{4}(2) + \\frac{1}{8}(3) + \\frac{1}{8}(3) = \\frac{7}{4}$ **bits**\n*   **핵심:** 확률이 균등하지 않을 때의 평균 정보량을 계산하는 법을 익힐 수 있습니다.\n\n### 3. 결합 엔트로피 (Joint Entropy, $H(X, Y)$)\n2페이지 하단에서는 두 개의 랜덤 변수가 결합된 경우의 엔트로피를 정의합니다.\n*   **정의:** 두 확률 변수 $X$와 $Y$가 동시에 어떤 값을 가질 때 발생하는 전체 불확실성을 측정합니다.\n*   **수식:** $H(X, Y) = -\\sum_{x \\in \\mathcal{X}} \\sum_{y \\in \\mathcal{Y}} p(x, y) \\log p(x, y)$\n*   이는 개별 변수의 엔트로피 개념을 다차원으로 확장한 것이며, 이후 3페이지에서 다룰 '독립' 및 '종속' 관계 분석의 기초가 됩니다."
+    }
+  ],
+  "messages": [
+    {
+      "role": "assistant",
+      "agent": "ORCHESTRATOR",
+      "contentMarkdown": "학습 세션에 오신 것을 환영합니다. 현재 1페이지입니다.\n\n바로 설명부터 시작할까요?",
+      "widget": {
+        "type": "BINARY_CHOICE",
+        "decisionType": "START_EXPLANATION_DECISION"
+      },
+      "id": "msg_u32hcjxm",
+      "createdAt": "2026-03-06T01:18:08.503Z",
+      "thoughtSummaryMarkdown": "세션 초기 진입입니다. 현재 1페이지 기준으로 시작 안내와 설명 시작 여부를 판단합니다."
+    },
+    {
+      "role": "assistant",
+      "agent": "ORCHESTRATOR",
+      "contentMarkdown": "1페이지 설명을 시작합니다.",
+      "id": "msg_47yn97o6",
+      "createdAt": "2026-03-06T01:18:21.094Z",
+      "thoughtSummaryMarkdown": "설명 시작 의사결정을 확인하고, 수락 시 설명 에이전트를 호출하도록 계획합니다."
+    },
+    {
+      "role": "assistant",
+      "agent": "EXPLAINER",
+      "contentMarkdown": "안녕하세요! 현재 보고 계신 **1페이지**의 핵심 내용을 정리해 드리겠습니다.\n\n### 1. 정보량 (Information Content)\n**1페이지**에서는 정보이론의 가장 기초가 되는 '정보량'의 개념을 설명합니다.\n*   **정의:** 어떤 사건 $x$가 발생했을 때 느끼는 '놀람(Surprise)'의 정도를 수치화한 것입니다.\n*   **특징:** 확률이 낮을수록(드문 사건일수록) 예측하기 어렵기 때문에 발생했을 때 더 많은 정보를 제공하며, 정보량 $I(x)$는 높아집니다.\n*   **수식:** $I(x) = \\log \\frac{1}{P(x)}$\n\n### 2. 엔트로피 (Entropy)\n**1페이지** 중단부에서는 정보량을 바탕으로 한 '엔트로피'의 정의를 다룹니다.\n*   **의미:** 랜덤 변수 $X$가 가질 수 있는 모든 정보량의 **기댓값(평균)**입니다. 즉, 사건이 얼마나 예측하기 어려운지(불확실성)를 나타내는 지표입니다.\n*   **수식:** $H(X) = \\sum_{x \\in \\mathcal{X}} p(x) \\log \\frac{1}{p(x)} = \\mathbb{E}_p[I(X)]$\n\n### 3. 엔트로피의 주요 특성\n**1페이지** 하단에 요약된 엔트로피의 성질은 다음과 같습니다.\n*   **단위:** 로그의 밑을 2로 사용할 경우 단위는 **bits**가 됩니다.\n*   **항상 0 이상:** $H(X) \\geq 0$이며, 결과가 100% 확실하여 $p(x)=1$인 경우 엔트로피는 0(불확실성 없음)이 됩니다.\n*   **균등 분포일 때 최대:** 모든 사건이 일어날 확률이 같을 때($p(x) = 1/n$) 불확실성이 가장 크며, 이때 $H(X) = \\log n$입니다.\n\n### 4. 베르누이 엔트로피 예제\n**1페이지** 마지막 부분에서는 가장 간단한 확률 모델인 베르누이 분포(결과가 0 또는 1인 경우)의 엔트로피를 구하기 위한 확률 변수 설정을 보여주며 다음 페이지로 이어집니다.\n\n이어서 2페이지의 계산 과정을 보시면 엔트로피가 확률 $p$에 따라 어떻게 변하는지 확인하실 수 있습니다!",
+      "thoughtSummaryMarkdown": "**Analyzing Entropy Fundamentals**\n\nOkay, I'm diving into the entropy discussion, focusing on the core concepts presented on Page 1. I'm starting by unpacking the foundational ideas from \"Chapter 2: Entropy (1)\" – I'm really starting to feel like I have a grasp. I'm outlining and organizing the key elements now so that I can provide an analysis of the subject.\n\n\n**Defining Information Content**\n\nI've just refined my understanding of information content; the 'surprise' of an event is really quite important. I've broken down the definition, formula, and key insight, and am moving on to entropy, which I'm considering as an expected value of that information content. I'm focusing on the units for entropy, and I've started examining the characteristics of entropy. It's fascinating how it ties into predictability.",
+      "id": "msg_wp5mb60i",
+      "createdAt": "2026-03-06T01:18:33.970Z"
+    },
+    {
+      "role": "assistant",
+      "agent": "ORCHESTRATOR",
+      "contentMarkdown": "현재 페이지 설명이 끝났습니다. 퀴즈를 진행할까요?",
+      "widget": {
+        "type": "BINARY_CHOICE",
+        "decisionType": "QUIZ_DECISION"
+      },
+      "id": "msg_1uaew5xu",
+      "createdAt": "2026-03-06T01:18:33.970Z",
+      "thoughtSummaryMarkdown": "설명 시작 의사결정을 확인하고, 수락 시 설명 에이전트를 호출하도록 계획합니다."
+    },
+    {
+      "role": "assistant",
+      "agent": "ORCHESTRATOR",
+      "contentMarkdown": "퀴즈 유형을 선택해 주세요.",
+      "widget": {
+        "type": "QUIZ_TYPE_PICKER",
+        "options": [
+          {
+            "id": "MCQ",
+            "label": "객관식"
+          },
+          {
+            "id": "OX",
+            "label": "OX"
+          },
+          {
+            "id": "SHORT",
+            "label": "단답형"
+          },
+          {
+            "id": "ESSAY",
+            "label": "서술형"
+          }
+        ],
+        "recommendedId": "MCQ",
+        "badgeText": "추천됨"
+      },
+      "id": "msg_3a77rliq",
+      "createdAt": "2026-03-06T01:18:58.704Z",
+      "thoughtSummaryMarkdown": "퀴즈 진행 여부를 반영해 유형 선택 또는 다음 페이지 질문으로 분기합니다."
+    },
+    {
+      "role": "assistant",
+      "agent": "SYSTEM",
+      "contentMarkdown": "AI 도구 실행 실패(GENERATE_QUIZ_OX). 현재 요청은 계속 진행되며 다시 시도할 수 있습니다.\n\n오류: `AI generate_quiz_stream 실패: AI generate_quiz_stream 실패: Failed to parse quiz JSON: empty response`",
+      "id": "msg_o7p94stt",
+      "createdAt": "2026-03-06T01:19:15.691Z"
+    },
+    {
+      "role": "assistant",
+      "agent": "QUIZ",
+      "contentMarkdown": "1페이지 퀴즈가 생성되었습니다. 퀴즈 모달에서 응시해 주세요.",
+      "thoughtSummaryMarkdown": "**Defining the Scope**\n\nI'm zeroing in on defining the JSON structure for the OX quiz. The focus is now solely on page one of the provided content, keeping it concise. The JSON needs a `schemaVersion`, `quizId`, and a mechanism to store three True/False questions.\n\n\n**Refining the Quiz Structure**\n\nI'm now integrating information content and entropy concepts into the quiz. The questions will assess understanding of how probability relates to information and entropy. I've designed a question focusing on the inverse relationship between probability and information content. The second question will target entropy value in case of the certain events. This will all be represented in the JSON structure. The language for the questions is Korean.\n\n\n**Finalizing the Questions**\n\nI've finalized the OX questions and included their answers and point values. I've corrected the previous statement about the entropy when p(x)=1, which is now correctly marked as False. The third question about maximum entropy being at uniform distributions is set as True. The JSON structure now includes 'schemaVersion', 'quizId', 'quizType', and 'page' attributes. I am using `promptMarkdown` for the text of the questions.\n\n\n**Revising Question Diversity**\n\nI am now aiming for a more balanced quiz and need to ensure diversity in answers. I've revised the questions and their corresponding answers; I was wrong before, the correct answers are now True, False, and False, respectively. The structure is nearly complete. I've corrected and refactored the answers to the questions.",
+      "id": "msg_d3bzjgxc",
+      "createdAt": "2026-03-06T01:19:34.294Z"
+    },
+    {
+      "role": "assistant",
+      "agent": "GRADER",
+      "contentMarkdown": "채점 완료: **20/30**",
+      "id": "msg_ys0nbck3",
+      "createdAt": "2026-03-06T01:19:44.255Z"
+    },
+    {
+      "role": "assistant",
+      "agent": "ORCHESTRATOR",
+      "contentMarkdown": "점수가 기준 미달입니다. 복습을 진행할까요?",
+      "widget": {
+        "type": "BINARY_CHOICE",
+        "decisionType": "REVIEW_DECISION"
+      },
+      "id": "msg_lnr5trui",
+      "createdAt": "2026-03-06T01:19:44.255Z",
+      "thoughtSummaryMarkdown": "문항 유형에 따라 자동 채점 또는 LLM 채점 경로를 선택하고 결과를 학습 모델에 반영합니다."
+    },
+    {
+      "role": "assistant",
+      "agent": "ORCHESTRATOR",
+      "contentMarkdown": "복습을 건너뛰었습니다. 다음 페이지로 진행 가능합니다.",
+      "id": "msg_2mn2i2x2",
+      "createdAt": "2026-03-06T01:19:55.550Z",
+      "thoughtSummaryMarkdown": "복습 수락 여부를 바탕으로 복습 설명 호출 또는 종료 분기를 수행합니다."
+    },
+    {
+      "role": "user",
+      "agent": "SYSTEM",
+      "contentMarkdown": "다음으로 넘어가",
+      "id": "msg_urswf3tm",
+      "createdAt": "2026-03-06T01:20:08.736Z"
+    },
+    {
+      "role": "assistant",
+      "agent": "ORCHESTRATOR",
+      "contentMarkdown": "2페이지로 이동했습니다. 설명을 이어가겠습니다.",
+      "id": "msg_xvkr4tc1",
+      "createdAt": "2026-03-06T01:20:09.939Z",
+      "thoughtSummaryMarkdown": "사용자 메시지를 분석해 질문 응답 또는 퀴즈 흐름 분기로 라우팅합니다."
+    },
+    {
+      "role": "assistant",
+      "agent": "EXPLAINER",
+      "contentMarkdown": "제2페이지에서는 **베르누이 분포의 엔트로피 특징**과 **엔트로피 계산 예제**, 그리고 **결합 엔트로피(Joint Entropy)**의 정의를 다루고 있습니다. 주요 내용은 다음과 같습니다.\n\n### 1. 베르누이 엔트로피의 특징 (2페이지 상단)\n1페이지에서 정의한 베르누이 시행($X$)에 대한 엔트로피 $H(p)$의 성질을 그래프와 함께 설명합니다.\n*   **함수 형태:** 엔트로피 $H(p)$는 **위로 볼록한(concave)** 형태를 가집니다.\n*   **최솟값 ($H(p)=0$):** $p=0$ 또는 $p=1$일 때입니다. 이는 결과가 항상 0이거나 항상 1인 상태로, 불확실성이 전혀 없음을 의미합니다.\n*   **최댓값 ($H(p)=1$ bit):** **$p=0.5$**일 때 엔트로피가 최대가 됩니다. 0과 1이 나올 확률이 동등할 때 가장 예측하기 어렵기(불확실성이 높기) 때문입니다.\n\n### 2. 엔트로피 단순 계산 예제 (Example 2.1.2)\n2페이지 중간에서는 주어진 확률 질량 함수(PMF)를 이용해 실제 엔트로피를 구하는 과정을 보여줍니다.\n*   **확률 분포:** $P(a)=1/2, P(b)=1/4, P(c)=1/8, P(d)=1/8$\n*   **계산 과정:** 각 사건의 정보량($\\log \\frac{1}{p(x)}$)에 해당 확률을 곱해 모두 더합니다.\n    *   $H(X) = \\frac{1}{2}(1) + \\frac{1}{4}(2) + \\frac{1}{8}(3) + \\frac{1}{8}(3) = \\frac{7}{4}$ **bits**\n*   **핵심:** 확률이 균등하지 않을 때의 평균 정보량을 계산하는 법을 익힐 수 있습니다.\n\n### 3. 결합 엔트로피 (Joint Entropy, $H(X, Y)$)\n2페이지 하단에서는 두 개의 랜덤 변수가 결합된 경우의 엔트로피를 정의합니다.\n*   **정의:** 두 확률 변수 $X$와 $Y$가 동시에 어떤 값을 가질 때 발생하는 전체 불확실성을 측정합니다.\n*   **수식:** $H(X, Y) = -\\sum_{x \\in \\mathcal{X}} \\sum_{y \\in \\mathcal{Y}} p(x, y) \\log p(x, y)$\n*   이는 개별 변수의 엔트로피 개념을 다차원으로 확장한 것이며, 이후 3페이지에서 다룰 '독립' 및 '종속' 관계 분석의 기초가 됩니다.",
+      "thoughtSummaryMarkdown": "**Analyzing Page Context**\n\nI'm currently focused on explaining **Page 2**. I plan to reference the page number directly in my explanations, formatting with Markdown for clarity. I'm aiming for a medium depth level in my analyses.\n\n\n**Clarifying Entropy Calculations**\n\nI've streamlined the explanation of Bernoulli entropy on **Page 2**, focusing on the formula and its key features. I've also incorporated Example 2.1.2, showing the calculation of entropy using a given PMF. I will clearly define the concept of joint entropy, denoted as $H(X, Y)$. My primary goal is to provide a concise and clear explanation of the core concepts presented on the page.",
+      "id": "msg_jmcm0o65",
+      "createdAt": "2026-03-06T01:20:24.405Z"
+    },
+    {
+      "role": "assistant",
+      "agent": "ORCHESTRATOR",
+      "contentMarkdown": "현재 페이지 설명이 끝났습니다. 퀴즈를 진행할까요?",
+      "widget": {
+        "type": "BINARY_CHOICE",
+        "decisionType": "QUIZ_DECISION"
+      },
+      "id": "msg_or6tmw7b",
+      "createdAt": "2026-03-06T01:20:24.405Z",
+      "thoughtSummaryMarkdown": "사용자 메시지를 분석해 질문 응답 또는 퀴즈 흐름 분기로 라우팅합니다."
+    },
+    {
+      "role": "assistant",
+      "agent": "SYSTEM",
+      "contentMarkdown": "세션을 저장했습니다.",
+      "id": "msg_80779tm3",
+      "createdAt": "2026-03-06T01:20:28.593Z"
+    },
+    {
+      "role": "assistant",
+      "agent": "ORCHESTRATOR",
+      "contentMarkdown": "퀴즈 유형을 선택해 주세요.",
+      "widget": {
+        "type": "QUIZ_TYPE_PICKER",
+        "options": [
+          {
+            "id": "MCQ",
+            "label": "객관식"
+          },
+          {
+            "id": "OX",
+            "label": "OX"
+          },
+          {
+            "id": "SHORT",
+            "label": "단답형"
+          },
+          {
+            "id": "ESSAY",
+            "label": "서술형"
+          }
+        ],
+        "recommendedId": "MCQ",
+        "badgeText": "추천됨"
+      },
+      "id": "msg_54ugoquu",
+      "createdAt": "2026-03-18T13:50:18.982Z",
+      "thoughtSummaryMarkdown": "퀴즈 진행 여부를 반영해 유형 선택 또는 다음 페이지 질문으로 분기합니다."
+    },
+    {
+      "role": "assistant",
+      "agent": "SYSTEM",
+      "contentMarkdown": "AI 도구 실행 실패(GENERATE_QUIZ_MCQ). 현재 요청은 계속 진행되며 다시 시도할 수 있습니다.\n\n오류: `AI generate_quiz_stream 실패: AI generate_quiz_stream 실패: Gemini streaming failed: 403 PERMISSION_DENIED. {'error': {'code': 403, 'message': 'You do not have permission to access the File 8n1w62c3jjel or it may not exist.', 'status': 'PERMISSION_DENIED'}}`",
+      "id": "msg_157sgvf4",
+      "createdAt": "2026-03-18T13:50:23.012Z"
+    },
+    {
+      "role": "assistant",
+      "agent": "SYSTEM",
+      "contentMarkdown": "세션을 저장했습니다.",
+      "id": "msg_ae1o8el0",
+      "createdAt": "2026-03-18T13:55:25.651Z"
+    }
+  ],
+  "quizzes": [
+    {
+      "id": "quiz_chap2_entropy_p1",
+      "quizType": "OX",
+      "createdFromPage": 1,
+      "createdAt": "2026-03-06T01:19:34.294Z",
+      "quizJson": {
+        "schemaVersion": "1.0",
+        "quizId": "quiz_chap2_entropy_p1",
+        "quizType": "OX",
+        "page": 1,
+        "questions": [
+          {
+            "id": "q1",
+            "promptMarkdown": "정보량(Information Content)은 특정 사건이 발생할 확률이 낮을수록 더 큰 값을 가진다.",
+            "points": 10,
+            "answer": {
+              "value": true
+            }
+          },
+          {
+            "id": "q2",
+            "promptMarkdown": "사건 $x$가 발생할 확률 $p(x) = 1$인 경우, 해당 시스템의 엔트로피 $H(X)$는 0이며 이는 정보가 없음을 의미한다.",
+            "points": 10,
+            "answer": {
+              "value": true
+            }
+          },
+          {
+            "id": "q3",
+            "promptMarkdown": "엔트로피 $H(X)$는 확률 분포가 균등 분포(Uniform Distribution)일 때 최소값을 가진다.",
+            "points": 10,
+            "answer": {
+              "value": false
+            }
+          }
+        ]
+      },
+      "userAnswers": {
+        "q1": true,
+        "q2": true,
+        "q3": true
+      },
+      "grading": {
+        "status": "GRADED",
+        "score": 20,
+        "maxScore": 30,
+        "scoreRatio": 0.6666666666666666,
+        "items": [
+          {
+            "questionId": "q1",
+            "score": 10,
+            "maxScore": 10,
+            "verdict": "CORRECT",
+            "feedbackMarkdown": "정답입니다."
+          },
+          {
+            "questionId": "q2",
+            "score": 10,
+            "maxScore": 10,
+            "verdict": "CORRECT",
+            "feedbackMarkdown": "정답입니다."
+          },
+          {
+            "questionId": "q3",
+            "score": 0,
+            "maxScore": 10,
+            "verdict": "WRONG",
+            "feedbackMarkdown": "오답입니다."
+          }
+        ],
+        "summaryMarkdown": "총점 20/30"
+      }
+    }
+  ],
+  "feedback": [],
+  "learnerModel": {
+    "level": "INTERMEDIATE",
+    "confidence": 0.5,
+    "weakConcepts": [],
+    "strongConcepts": []
+  },
+  "conversationSummary": "QUIZ: 1페이지 퀴즈가 생성되었습니다. 퀴즈 모달에서 응시해 주세요.\nGRADER: 채점 완료: **20/30**\nORCHESTRATOR: 점수가 기준 미달입니다. 복습을 진행할까요?\nORCHESTRATOR: 복습을 건너뛰었습니다. 다음 페이지로 진행 가능합니다.\nSYSTEM: 다음으로 넘어가\nORCHESTRATOR: 2페이지로 이동했습니다. 설명을 이어가겠습니다.\nEXPLAINER: 제2페이지에서는 **베르누이 분포의 엔트로피 특징**과 **엔트로피 계산 예제**, 그리고 **결합 엔트로피(Joint Entropy)**의 정의를 다루고 있습니다. 주요 내용은 다음과 같습니다.\n\n### 1. 베르누이 엔트로피의 특징 (2페이지 상단)\n1페이지에서 정의한 베르누이 시행($X$)에 대한 엔트로피 $H(p)$의 성질을 그래프와 함께 설명합니다.\n*   **함수 형태:** 엔트로피 $H(p)$는 **위로 볼록한(concave)** 형태를 가집니다.\n*   **최솟값 ($H(p)=0$):** $p=0$ 또는 $p=1$일 때입니다. 이는 결과가 항상 0이거나 항상 1인 상태로, 불확실성이 전혀 없음을 의미합니다.\n*   **최댓값 ($H(p)=1$ bit):** **$p=0.5$**일 때 엔트로피가 최대가 됩니다. 0과 1이 나올 확률이 동등할 때 가장 예측하기 어렵기(불확실성이 높기) 때문입니다.\n\n### 2. 엔트로피 단순 계산 예제 (Example 2.1.2)\n2페이지 중간에서는 주어진 확률 질량 함수(PMF)를 이용해 실제 엔트로피를 구하는 과정을 보여줍니다.\n*   **확률 분포:** $P(a)=1/2, P(b)=1/4, P(c)=1/8, P(d)=1/8$\n*   **계산 과정:** 각 사건의 정보량($\\log \\frac{1}{p(x)}$)에 해당 확률을 곱해 모두 더합니다.\n    *   $H(X) = \\frac{1}{2}(1) + \\frac{1}{4}(2) + \\frac{1}{8}(3) + \\frac{1}{8}(3) = \\frac{7}{4}$ **bits**\n*   **핵심:** 확률이 균등하지 않을 때의 평균 정보량을 계산하는 법을 익힐 수 있습니다.\n\n### 3. 결합 엔트로피 (Joint Entropy, $H(X, Y)$)\n2페이지 하단에서는 두 개의 랜덤 변수가 결합된 경우의 엔트로피를 정의합니다.\n*   **정의:** 두 확률 변수 $X$와 $Y$가 동시에 어떤 값을 가질 때 발생하는 전체 불확실성을 측정합니다.\n*   **수식:** $H(X, Y) = -\\sum_{x \\in \\mathcal{X}} \\sum_{y \\in \\mathcal{Y}} p(x, y) \\log p(x, y)$\n*   이는 개별 변수의 엔트로피 개념을 다차원으로 확장한 것이며, 이후 3페이지에서 다룰 '독립' 및 '종속' 관계 분석의 기초가 됩니다.\nORCHESTRATOR: 현재 페이지 설명이 끝났습니다. 퀴즈를 진행할까요?\nSYSTEM: 세션을 저장했습니다.\nORCHESTRATOR: 퀴즈 유형을 선택해 주세요.\nSYSTEM: AI 도구 실행 실패(GENERATE_QUIZ_MCQ). 현재 요청은 계속 진행되며 다시 시도할 수 있습니다.\n\n오류: `AI generate_quiz_stream 실패: AI generate_quiz_stream 실패: Gemini streaming failed: 403 PERMISSION_DENIED. {'error': {'code': 403, 'message': 'You do not have permission to access the File 8n1w62c3jjel or it may not exist.', 'status': 'PERMISSION_DENIED'}}`\nSYSTEM: 세션을 저장했습니다.",
+  "updatedAt": "2026-03-18T13:55:25.711Z"
+}

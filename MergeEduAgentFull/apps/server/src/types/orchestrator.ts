@@ -14,6 +14,7 @@ export type ToolName =
   | "GENERATE_QUIZ_ESSAY"
   | "AUTO_GRADE_MCQ_OX"
   | "GRADE_SHORT_OR_ESSAY"
+  | "REPAIR_MISCONCEPTION"
   | "WRITE_FEEDBACK_ENTRY";
 
 export interface ToolAction {
@@ -24,11 +25,33 @@ export interface ToolAction {
 
 export type OrchestratorAction = ToolAction;
 
+export type PolicyMode =
+  | "EXPLAIN_FIRST"
+  | "DIAGNOSE"
+  | "MISCONCEPTION_REPAIR"
+  | "MINIMAL_HINT"
+  | "CHECK_READINESS"
+  | "HOLD_BACK"
+  | "SRL_REFLECTION"
+  | "ADVANCE";
+
+export type HintDepth = "LOW" | "MEDIUM" | "HIGH";
+
+export interface PedagogyPolicy {
+  mode: PolicyMode;
+  reason: string;
+  allowDirectAnswer: boolean;
+  hintDepth: HintDepth;
+  interventionBudget: 0 | 1 | 2 | 3;
+}
+
 export interface OrchestratorPlan {
   schemaVersion: "1.0";
   actions: OrchestratorAction[];
   stop?: boolean;
   memoryWrite?: LearnerMemoryWrite | null;
+  /** Ver3: optional at wire level; normalizePlan() guarantees presence at dispatch time. */
+  pedagogyPolicy?: PedagogyPolicy;
 }
 
 export interface OrchestratorInput {
@@ -45,6 +68,7 @@ export interface OrchestratorInput {
     passScoreRatio: number;
     recentMessagesN: number;
   };
+  assessmentDigest?: string;
   llmHint?: {
     offerQuiz?: boolean;
     detailLevel?: "NORMAL" | "DETAILED";

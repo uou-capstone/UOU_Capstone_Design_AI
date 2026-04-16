@@ -1,23 +1,25 @@
 # MergeEduAgent LLM 멀티 에이전트 아키텍처
 
-- 문서 버전: `v2.1`
-- 최종 점검일: `2026-04-13`
+- 문서 버전: `v2.3`
+- 최종 점검일: `2026-04-16`
 - 상태: `구현 반영본`
-- 범위: `LLM planner`, `통합 학습자 메모리`, `개인화 설명/시험`, `스트리밍`, `fallback`
+- 범위: `LLM planner`, `pedagogyPolicy`, `진단/교정`, `assessment handoff`, `통합 학습자 메모리`, `스트리밍`, `fallback`
 
 ## 1. 목표와 현재 상태
 
 현재 구조의 핵심은 세션 오케스트레이션의 주 경로를
-`규칙 기반 분기기`에서 `LLM planner`로 옮기고,
-실행 자체는 여전히 제한된 tool call로만 수행하는 것이다.
+`규칙 기반 분기기`에서 `LLM planner`로 옮기되,
+실행 자체는 여전히 제한된 tool call과 verifier로 강하게 통제하는 것이다.
 
 현재 구현이 실제로 달성한 목표는 다음과 같다.
 
 - 설명 시작/보류를 plan JSON으로 결정
-- 자유 질문을 QA tool로 라우팅
+- 자유 질문을 QA tool로 라우팅하고, 같은 페이지 follow-up은 QA thread로 이어감
+- `pedagogyPolicy`를 먼저 정하고 verifier 제약 안에서만 tool call을 실행
 - 퀴즈 생성과 채점을 tool call로 결정
-- 복습/재시험 루프를 이벤트 기반으로 연결
+- 저득점 구간을 `QuizDiagnosisService -> activeIntervention -> REPAIR_MISCONCEPTION` 루프로 연결
 - 학생 개인화 메모리를 `memoryWrite`로 갱신
+- 퀴즈 채점 결과를 `quizAssessments`에 저장하고 다음 턴 `assessmentDigest`로 handoff
 - thought는 스트리밍하고 실행물은 schema-validated JSON으로 제한
 
 동시에 현재 구현은 완전한 무조건 LLM 모드가 아니라,
@@ -26,6 +28,7 @@
 - `SAVE_AND_EXIT`
 - `geminiFile` 부재
 - 브리지/모델 실패
+- structured JSON plan 파싱 실패
 - 테스트/복구용 deterministic plan
 
 ## 2. 시스템 컨텍스트
@@ -37,6 +40,7 @@ flowchart LR
   S --> E["OrchestrationEngine"]
   E --> R["StateReducer"]
   E --> O["Orchestrator Prompt/Schema"]
+  E --> QA2["QuizAssessmentService"]
   E --> G["GeminiBridgeClient"]
   G --> B["AI Bridge (FastAPI)"]
   B --> GM["Google Gemini API"]
@@ -45,8 +49,12 @@ flowchart LR
   D --> QA["QaAgent"]
   D --> QZ["QuizAgents"]
   D --> GR["GraderAgent"]
+  D --> MR["MisconceptionRepairAgent"]
+  D --> QD["QuizDiagnosisService"]
+  D --> QT["QaThreadService"]
   E --> J["JsonStore"]
   E --> P["PdfIngestService"]
+  E --> S2["SummaryService"]
 ```
 
 ## 3. 핵심 설계 요약
@@ -61,23 +69,48 @@ flowchart LR
 2. `Orchestrator.getResponseJsonSchema()`
 3. `GeminiBridgeClient.orchestrateSessionStream(...)`
 4. `parseOrchestratorPlan(...)`
-5. `ToolDispatcher.dispatch(...)`
+5. `normalizePlan(...)`
+6. `ToolDispatcher.dispatch(...)`
 
 LLM은 “어떤 tool을 어떤 순서로 호출할지”만 결정하고,
 실행은 여전히 서버가 담당한다.
 
-### 3.2 Fallback Planner
+### 3.2 Pedagogy Policy + Verifier
 
-아래 상황에서는 `Orchestrator.fallback(...)`을 사용한다.
+현재 구조는 단순 tool selection이 아니라,
+각 턴에 먼저 교수 목적을 고르는 구조다.
 
-- `SAVE_AND_EXIT` 이벤트
-- 강의 PDF에 `geminiFile`이 없는 경우
-- LLM 호출 실패
-- structured JSON plan 정리가 실패한 경우
+- `pedagogyPolicy.mode`
+  - `EXPLAIN_FIRST`, `DIAGNOSE`, `MISCONCEPTION_REPAIR`, `MINIMAL_HINT`, `CHECK_READINESS`, `HOLD_BACK`, `SRL_REFLECTION`, `ADVANCE`
+- `allowDirectAnswer`
+- `hintDepth`
+- `interventionBudget`
 
-즉, 현재 구조는 `LLM planner 우선 + deterministic fallback 유지` 구조다.
+`Orchestrator`가 이 정책을 plan에 넣고,
+`ToolDispatcher.verifyAndPatchPlan(...)`이 다시 아래를 강제한다.
 
-### 3.3 통합 학습자 메모리
+- 정책과 action 충돌 시 trim 또는 patch
+- repair action 자동 주입
+- hint-only turn 보정
+- `interventionBudget` 및 hard cap 적용
+
+즉, 현재 구조는 `LLM planner 우선 + policy verifier 유지` 구조다.
+
+### 3.3 Active Intervention: 진단/교정 루프
+
+저득점 퀴즈는 단순 `복습할까요?`에서 끝나지 않는다.
+
+현재 구현은 아래 흐름을 쓴다.
+
+1. grading 완료
+2. `QuizDiagnosisService`가 focus concepts와 diagnostic prompt 생성
+3. `SessionState.activeIntervention` 저장
+4. 학생의 다음 `USER_MESSAGE`를 진단 답변으로 우선 해석
+5. `REPAIR_MISCONCEPTION`
+6. `MisconceptionRepairAgent`가 맞춤 교정 설명 생성
+7. `RETEST_DECISION`으로 짧은 재확인 연결
+
+### 3.4 통합 학습자 메모리
 
 세션의 `integratedMemory`는 아래 필드를 가진다.
 
@@ -94,39 +127,39 @@ LLM은 “어떤 tool을 어떤 순서로 호출할지”만 결정하고,
 LLM은 매 턴 이 메모리를 강제 갱신하지 않는다.
 오케스트레이터가 강한 근거가 있다고 판단할 때만 `memoryWrite.shouldPersist = true`를 사용한다.
 
-### 3.4 memoryWrite 병합 방식
+### 3.5 Assessment Artifact + Next-turn Handoff
 
-`applyLearnerMemoryWrite(...)`는 다음을 수행한다.
+Ver4부터 채점 결과는 점수만 남기지 않는다.
 
-- 문자열 배열은 중복 제거 후 merge
-- `preferredQuizTypes`는 최대 4개 유지
-- `targetDifficulty` 갱신 가능
-- `learnerLevel`, `confidence`를 함께 업데이트 가능
-- 최종적으로 `learnerModel.strongConcepts`, `weakConcepts`도 재계산
+현재 구조는 아래를 추가로 수행한다.
 
-즉, 메모리 갱신은 단순 설명 메모가 아니라
-후속 설명/퀴즈/채점 행동을 바꾸는 학습자 상태 업데이트다.
+- grading 직후 `QuizAssessmentService.buildQuizAssessment(...)`
+- `SessionState.quizAssessments[]`에 `PENDING` 상태로 저장
+- 다음 턴 `preparePendingAssessmentHandoff(...)`
+- `assessmentDigest`를 오케스트레이터 prompt에 주입
+- turn 저장 직전 `markAssessmentsConsumed(...)`
 
-### 3.5 개인화 전달
+assessment는 같은 턴에 곧바로 memory에 쓰지 않는다.
+즉, `assessment = 다음 턴 personalization 후보를 위한 세션 artifact`다.
 
-통합 메모리는 아래 agent 입력으로 실제 전달된다.
+### 3.6 QA Thread Memory
 
-- `ExplainerAgent`
-  - 설명 깊이와 강조 포인트 조절
-- `QaAgent`
-  - 답변 밀도와 예시 수준 조절
-- `QuizAgents`
-  - `targetDifficulty`, 약점 개념, 퀴즈 선호 반영
-- `GraderAgent`
-  - 피드백에서 오개념/보완 포인트 반영
+현재 QA는 세션 전체 대화를 모두 끌고 가지 않는다.
 
-### 3.6 토큰/컨텍스트 절감 전략
+- 같은 페이지의 질문응답만 `qaThread.turns`에 최대 6개 유지
+- follow-up 질문이면 `threadMode = FOLLOW_UP`
+- 새 독립 질문이면 `threadMode = START_NEW`
+- 오케스트레이터 prompt와 QaAgent 입력 모두 `qaThreadDigest`를 사용
+
+즉, QA는 `세션 전체 대화`가 아니라 `현재 페이지 follow-up 문맥`만 이어간다.
+
+### 3.7 토큰/컨텍스트 절감 전략
 
 현재 구현은 아래 방식으로 컨텍스트를 줄인다.
 
 - PDF는 최초 업로드 후 `geminiFile`로 재사용
 - AI Bridge에서 `cached_content`를 생성할 수 있으면 재사용
-- 오케스트레이터 프롬프트에는 최근 메시지/최근 퀴즈/페이지 이력/통합 메모만 압축 포함
+- 오케스트레이터 프롬프트에는 최근 메시지/최근 퀴즈/페이지 이력/통합 메모/QA thread/assessment만 압축 포함
 - 긴 세션에서는 `conversationSummary`를 다시 사용
 - 퀴즈 생성 컨텍스트는 우선 `buildPageHistoryDigest(...)`
 - digest가 비어 있으면 `readCumulativeContext(...)`로 현재 페이지까지 누적 PDF 텍스트 사용
@@ -135,17 +168,22 @@ LLM은 매 턴 이 메모리를 강제 갱신하지 않는다.
 
 1. 클라이언트가 `SESSION_ENTERED`, `USER_MESSAGE`, `QUIZ_SUBMITTED` 같은 이벤트를 보낸다.
 2. `StateReducer`가 즉시 반영 가능한 상태를 먼저 갱신한다.
-3. `PdfIngestService`가 현재/이전/다음 페이지 텍스트를 읽는다.
-4. `OrchestrationEngine`이 오케스트레이터 prompt와 schema를 준비한다.
-5. AI Bridge가 Gemini에 스트리밍 요청을 보낸다.
-6. `thought_delta`는 UI에 즉시 전달된다.
-7. `answer` 채널의 최종 JSON plan은 schema로 검증된다.
-8. `memoryWrite`가 있으면 세션 메모리에 병합된다.
-9. `ToolDispatcher`가 tool action을 순차 실행한다.
-10. 새 메시지, page state, learner model, UI patch를 만든다.
-11. `SummaryService`가 `conversationSummary`를 갱신한다.
-12. 새 채점 결과가 있으면 `quiz-results.json`에 추가 로그를 남긴다.
-13. 세션을 저장한다.
+3. `SAVE_AND_EXIT`가 아니면 `QuizAssessmentService`가 pending assessment를 골라 다음 턴용 handoff digest를 만든다.
+4. `PdfIngestService`가 현재/이전/다음 페이지 텍스트를 읽는다.
+5. `OrchestrationEngine`이 오케스트레이터 prompt와 schema를 준비한다.
+6. AI Bridge가 Gemini에 스트리밍 요청을 보낸다.
+7. `thought_delta`는 UI에 즉시 전달된다.
+8. `answer` 채널의 최종 JSON plan은 schema로 검증된다.
+9. `normalizePlan(...)`이 빠진 `pedagogyPolicy`를 보정한다.
+10. `memoryWrite`가 있으면 세션 메모리에 병합된다.
+11. `ToolDispatcher`가 verifier를 거쳐 tool action을 순차 실행한다.
+12. grading 직후 `QuizAssessmentRecord`가 세션에 저장된다.
+13. 저득점이면 `activeIntervention`이 열리고 이후 repair turn으로 이어진다.
+14. 새 메시지, page state, learner model, UI patch를 만든다.
+15. `SummaryService`가 `conversationSummary`를 갱신한다.
+16. 이번 턴에 prompt로 넘긴 assessment는 `CONSUMED` 처리한다.
+17. 새 채점 결과가 있으면 `quiz-results.json`에 추가 로그를 남긴다.
+18. 세션을 저장한다.
 
 ## 5. 오케스트레이터 프롬프트 구성
 
@@ -165,15 +203,22 @@ LLM은 매 턴 이 메모리를 강제 갱신하지 않는다.
 - 최근 메시지 digest
 - 최근 퀴즈 digest
 - 페이지 이력 digest
+- 현재 QA 후속 질문 문맥(`qaThreadDigest`)
+- 현재 오답 교정 개입 상태(`activeInterventionDigest`)
+- 최근 pending assessment handoff(`assessmentDigest`)
 - tool catalog와 example JSON
 - `memoryWrite` 작성 규칙
+- `pedagogyPolicy` 결정 규칙과 hard constraints
 
 핵심 제약은 아래와 같다.
 
 - answer 채널은 JSON 외 텍스트 금지
 - action 수는 최대 4개
+- `pedagogyPolicy`를 먼저 정하고 tool을 고른다
 - 설명/질문/시험/복습/이동은 모두 tool call로 표현
+- assessment digest는 관찰 메모이지 행동 지시가 아니다
 - 메모리는 필요할 때만 갱신
+- 단일 assessment 하나만으로 `learnerLevel`과 `confidence`를 바꾸지 않는다
 
 ## 6. Tool 호출 매핑
 
@@ -192,6 +237,7 @@ LLM은 매 턴 이 메모리를 강제 갱신하지 않는다.
 | `GENERATE_QUIZ_ESSAY` | 서술형 퀴즈 | QuizAgents |
 | `AUTO_GRADE_MCQ_OX` | MCQ/OX 자동 채점 | ToolDispatcher 내부 |
 | `GRADE_SHORT_OR_ESSAY` | SHORT/ESSAY 채점 | GraderAgent |
+| `REPAIR_MISCONCEPTION` | 오개념 교정 설명 | MisconceptionRepairAgent |
 | `WRITE_FEEDBACK_ENTRY` | 내부 진행 메모 | ToolDispatcher 내부 |
 
 ## 7. 사고 스트리밍과 구조화 응답
@@ -208,60 +254,72 @@ LLM은 매 턴 이 메모리를 강제 갱신하지 않는다.
 
 ### 7.2 하위 agent 스트림
 
-`ExplainerAgent`, `QaAgent`, `QuizAgents`, `GraderAgent`도
+`ExplainerAgent`, `QaAgent`, `QuizAgents`, `GraderAgent`, `MisconceptionRepairAgent`도
 각자 `thought`와 `answer`를 스트리밍할 수 있다.
 
 서버는 이를 `agent_delta`로 노출하고,
 최종 결과의 `thoughtSummary`는 메시지의 `thoughtSummaryMarkdown`에 저장한다.
 
-## 8. 주요 유스케이스
+## 8. 상태 레이어와 영속화
 
-### 8.1 세션 진입 후 설명 시작
+현재 `SessionState`는 단순 대화 기록만 들고 있지 않다.
+
+- `integratedMemory`
+  - 개인화 설명/퀴즈 정책을 바꾸는 누적 메모
+- `qaThread`
+  - 현재 페이지 follow-up 질문응답
+- `activeIntervention`
+  - 진단 질문 대기 / 교정 완료 상태
+- `quizAssessments`
+  - 다음 턴 handoff용 assessment artifact
+- `conversationSummary`
+  - 긴 세션 컨텍스트 압축
+
+`JsonStore`는 세션 로드시 구버전 JSON을 안전하게 backfill 한다.
+
+- `integratedMemory`
+- `qaThread`
+- `activeIntervention`
+- `quizAssessments`
+
+또한 `/session/:sessionId/save`는 client state merge를 막고
+서버 상태만 다시 저장해 영속화 경계를 보호한다.
+
+## 9. 주요 유스케이스
+
+### 9.1 세션 진입 후 설명 시작
 
 1. 사용자가 세션에 들어오면 `SESSION_ENTERED`
 2. 오케스트레이터가 `START_EXPLANATION_DECISION` 위젯을 선택
 3. 사용자가 수락하면 `EXPLAIN_PAGE`
 4. 필요 시 퀴즈 진행 여부까지 후속 plan으로 연결
 
-### 8.2 강의 중 자유 질문
+### 9.2 강의 중 자유 질문과 follow-up
 
 1. 사용자가 일반 질문을 입력
 2. `StateReducer`가 user message를 먼저 append
 3. 오케스트레이터가 `ANSWER_QUESTION`을 선택
-4. QA agent가 페이지 문맥 + learner memory를 반영해 답변
-5. 필요 시 다음 페이지 여부를 다시 묻는다
+4. 같은 페이지 follow-up이면 `threadMode = FOLLOW_UP`
+5. QA agent가 페이지 문맥 + learner memory + qa thread를 반영해 답변
 
-### 8.3 오케스트레이터가 자율적으로 퀴즈 시점 결정
+### 9.3 저득점 후 진단/교정 루프
 
-현재 오케스트레이터는 아래 신호를 함께 본다.
+1. 사용자가 퀴즈를 제출
+2. grading tool이 채점 수행
+3. `QuizDiagnosisService`가 진단 질문 생성
+4. `activeIntervention` 저장
+5. 학생이 다음 턴에 답변
+6. 오케스트레이터가 `REPAIR_MISCONCEPTION`을 계획
+7. `MisconceptionRepairAgent`가 짧은 맞춤 교정 설명 제공
 
-- 현재 페이지 중요도
-- 최근 점수 흐름
-- 현재 페이지의 기존 퀴즈 시도 횟수
-- `targetDifficulty`
-- 약점/오개념 메모
+### 9.4 채점 결과의 다음 턴 handoff
 
-이 결과에 따라 다음 중 하나를 고른다.
+1. grading 직후 `QuizAssessmentRecord` 저장
+2. 다음 orchestration turn에서 `assessmentDigest`를 prompt에 주입
+3. 오케스트레이터가 필요할 때만 `memoryWrite`에 반영
+4. handoff가 끝난 assessment는 `CONSUMED` 처리
 
-- `PROMPT_BINARY_DECISION(QUIZ_DECISION)`
-- `OPEN_QUIZ_TYPE_PICKER`
-- 직접 `GENERATE_QUIZ_*`
-- 퀴즈 생략 후 다음 페이지 여부 질문
-
-### 8.4 퀴즈 실패 후 복습/재시험 루프
-
-현재 구현에서 이 루프는 두 단계로 나뉜다.
-
-1. 채점 직후:
-   - `ToolDispatcher`가 점수 기준 미달을 직접 감지
-   - 즉시 `REVIEW_DECISION` 위젯 메시지를 append
-2. 사용자가 복습 수락:
-   - 다음 이벤트에서 오케스트레이터가 `EXPLAIN_PAGE(detailLevel=DETAILED)`와 `RETEST_DECISION`을 계획
-
-즉, “낮은 점수 감지”는 dispatcher가 하고,
-“복습 이후 다음 루프 설계”는 오케스트레이터가 담당한다.
-
-### 8.5 페이지 이동
+### 9.5 페이지 이동
 
 페이지 이동은 하나의 경로만 있는 것이 아니다.
 
@@ -272,27 +330,32 @@ LLM은 매 턴 이 메모리를 강제 갱신하지 않는다.
 특히 `SET_CURRENT_PAGE`는 재설명이나 이전 페이지 회귀 같은
 오케스트레이터 주도 이동에 사용된다.
 
-## 9. 실패와 복구
+## 10. 실패와 복구
 
 현재 구조의 주요 fallback은 다음과 같다.
 
 - plan JSON을 못 받으면 deterministic fallback plan
 - `geminiFile`이 없으면 AI tool 대신 SYSTEM 메시지
 - tool 하나가 실패해도 전체 요청은 계속 진행
+- assessment 생성이 실패해도 grading/repair는 계속 진행
 - 마지막 페이지 초과 이동은 안내 메시지로 막음
-- 과거 세션에 `integratedMemory`가 없으면 로드시 초기 메모리로 보정
+- 과거 세션에 `integratedMemory`, `qaThread`, `activeIntervention`, `quizAssessments`가 없으면 로드시 보정
+- save route는 클라이언트가 server-owned state를 덮어쓰지 못하게 보호
 
-## 10. 구현 파일 맵
+## 11. 구현 파일 맵
 
 - 오케스트레이터 프롬프트/툴 카탈로그: `apps/server/src/services/agents/Orchestrator.ts`
 - 런타임 엔진: `apps/server/src/services/engine/OrchestrationEngine.ts`
-- 툴 실행기: `apps/server/src/services/engine/ToolDispatcher.ts`
+- 툴 실행기 + verifier: `apps/server/src/services/engine/ToolDispatcher.ts`
 - 통합 메모리: `apps/server/src/services/engine/LearnerMemoryService.ts`
+- QA thread: `apps/server/src/services/engine/QaThreadService.ts`
+- 진단/교정: `apps/server/src/services/engine/QuizDiagnosisService.ts`
+- assessment handoff: `apps/server/src/services/engine/QuizAssessmentService.ts`
 - 브리지 클라이언트: `apps/server/src/services/llm/GeminiBridgeClient.ts`
 - Gemini 브리지: `apps/ai-bridge/main.py`
 - 세션 라우트: `apps/server/src/routes/session.ts`
 
-## 11. Google Gemini 기능 사용 요약
+## 12. Google Gemini 기능 사용 요약
 
 현재 구현에서 실제로 쓰는 Gemini 측 핵심 기능은 다음과 같다.
 
@@ -303,22 +366,23 @@ LLM은 매 턴 이 메모리를 강제 갱신하지 않는다.
 
 오케스트레이션 경로를 한 줄로 요약하면:
 
-`생각은 스트리밍`, `실행물은 JSON schema 강제`, `PDF는 캐시 재사용`
+`생각은 스트리밍`, `실행물은 JSON schema 강제`, `행동은 policy/verifier로 제한`, `PDF는 캐시 재사용`
 
-## 12. 결론
+## 13. 결론
 
 현재 MergeEduAgent의 LLM 멀티 에이전트 구조는
 오케스트레이터를 단순 분기기가 아니라
-`학생 상태와 페이지 문맥을 보고 설명/질문/시험/복습을 고르는 planner`
+`학생 상태, QA 문맥, 오답 개입 상태, assessment handoff를 함께 보고 다음 행동을 고르는 planner`
 로 승격시킨 구조다.
 
 다만 실행은 여전히 아래 장치로 제한한다.
 
 - schema-validated JSON plan
-- 제한된 tool catalog
+- `pedagogyPolicy`
 - dispatcher 중심 실행
+- verifier
 - deterministic fallback
 
 즉, 현재 구조의 본질은
-`자율적 계획 수립은 LLM에 맡기고, 실행 안전성은 서버가 강하게 통제한다`
+`자율적 계획 수립은 LLM에 맡기고, 실행 안전성과 상태 일관성은 서버가 강하게 통제한다`
 로 정리할 수 있다.

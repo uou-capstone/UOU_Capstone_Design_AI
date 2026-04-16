@@ -290,6 +290,7 @@ export class GeminiBridgeClient {
     pageText: string;
     neighborText: { prev: string; next: string };
     learnerMemoryDigest?: string;
+    qaThreadDigest?: string;
   }): Promise<{ markdown: string; thoughtSummary: string; content: BridgeContent | null }> {
     try {
       const response = await this.http.post<BridgeResponse>("/bridge/answer_question", input);
@@ -313,6 +314,7 @@ export class GeminiBridgeClient {
       pageText: string;
       neighborText: { prev: string; next: string };
       learnerMemoryDigest?: string;
+      qaThreadDigest?: string;
     },
     onDelta?: (delta: { channel: StreamChannel; text: string }) => void
   ): Promise<{ markdown: string; thoughtSummary: string; content: BridgeContent | null }> {
@@ -457,6 +459,58 @@ export class GeminiBridgeClient {
     }
     return {
       plan: parsed,
+      thoughtSummary: streamed.thoughtSummary
+    };
+  }
+
+  async analyzeStudentCompetencyReport(input: {
+    model: string;
+    prompt: string;
+    responseJsonSchema: Record<string, unknown>;
+  }): Promise<{ report: unknown; thoughtSummary: string }> {
+    try {
+      const response = await this.http.post<BridgeResponse<unknown>>(
+        "/bridge/analyze_student_report",
+        input
+      );
+      const report = response.data.data;
+      if (report === undefined) {
+        this.throwClientError(
+          "analyze_student_report",
+          502,
+          "AI bridge failed to build student report JSON",
+          "bridge"
+        );
+      }
+      return {
+        report,
+        thoughtSummary: String(response.data.thoughtSummary ?? "")
+      };
+    } catch (error) {
+      this.rethrowBridgeError("analyze_student_report", error);
+    }
+  }
+
+  async analyzeStudentCompetencyReportStream(
+    input: {
+      model: string;
+      prompt: string;
+      responseJsonSchema: Record<string, unknown>;
+    },
+    onDelta?: (delta: { channel: StreamChannel; text: string }) => void
+  ): Promise<{ report: unknown; thoughtSummary: string }> {
+    const streamed = await this.streamBridge(
+      "analyze_student_report_stream",
+      "/bridge/analyze_student_report_stream",
+      input,
+      onDelta
+    );
+    let parsed: unknown = streamed.data;
+    if (parsed === undefined) {
+      parsed = JSON.parse(streamed.answerText);
+    }
+    return {
+      report: parsed,
       thoughtSummary: streamed.thoughtSummary
     };
   }

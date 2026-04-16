@@ -4,20 +4,42 @@ import {
   FeedbackEntry,
   GradingResult,
   LectureItem,
+  QaThreadMode,
   QuizJson,
   QuizRecord,
   QuizType,
   SessionState,
   Widget
 } from "../../types/domain.js";
-import { OrchestratorAction } from "../../types/orchestrator.js";
+import {
+  OrchestratorAction,
+  PedagogyPolicy
+} from "../../types/orchestrator.js";
 import { ExplainerAgent } from "../agents/ExplainerAgent.js";
 import { GraderAgent } from "../agents/GraderAgent.js";
+import { MisconceptionRepairAgent } from "../agents/MisconceptionRepairAgent.js";
 import { QaAgent } from "../agents/QaAgent.js";
 import { QuizAgents } from "../agents/QuizAgents.js";
 import {
+  applyLearnerMemoryWrite,
   buildIntegratedMemoryDigest
 } from "./LearnerMemoryService.js";
+import {
+  buildAssessmentLogPayload,
+  buildQuizAssessment,
+  upsertQuizAssessment
+} from "./QuizAssessmentService.js";
+import {
+  buildRepairMemoryWrite,
+  buildRepairQuestion,
+  createQuizRepairIntervention
+} from "./QuizDiagnosisService.js";
+import {
+  appendQaThreadTurn,
+  buildQaThreadDigest,
+  hasActiveQaThreadForPage,
+  resetQaThread
+} from "./QaThreadService.js";
 import { appendMessage, ensurePageState, makeId, nowIso, progressText } from "./utils.js";
 
 interface PageContextBundle {
@@ -36,7 +58,26 @@ interface DispatchContext {
     page: number,
     state: SessionState
   ) => Promise<PageContextBundle>;
+  /** Ver3 Phase 1: pedagogy policy forwarded by OrchestrationEngine. Optional
+   *  so that test fixtures which predate Ver3 remain valid. */
+  pedagogyPolicy?: PedagogyPolicy;
 }
+
+/** Ver3 Phase 1: tools that count against `interventionBudget` in verifier R3. */
+const INTERVENTION_TOOLS: ReadonlySet<string> = new Set([
+  "EXPLAIN_PAGE",
+  "ANSWER_QUESTION",
+  "REPAIR_MISCONCEPTION",
+  "GENERATE_QUIZ_MCQ",
+  "GENERATE_QUIZ_OX",
+  "GENERATE_QUIZ_SHORT",
+  "GENERATE_QUIZ_ESSAY",
+  "AUTO_GRADE_MCQ_OX",
+  "GRADE_SHORT_OR_ESSAY"
+]);
+
+/** Ver3 Phase 1: hard cap on total action count after verifier R10. */
+const VERIFIER_HARD_CAP = 8;
 
 export interface StreamProgressEvent {
   type: "agent_delta";
@@ -69,6 +110,17 @@ function isQuizAnswerCorrect(
 
   if (quiz.quizType === "OX") {
     const expected = Boolean((question as { answer: { value: boolean } }).answer.value);
+    if (
+      userAnswer === undefined ||
+      userAnswer === null ||
+      (typeof userAnswer === "string" && userAnswer.trim() === "")
+    ) {
+      return {
+        correct: false,
+        maxScore: points,
+        feedback: "미응답입니다."
+      };
+    }
     const answer =
       typeof userAnswer === "boolean"
         ? userAnswer
@@ -111,7 +163,8 @@ export class ToolDispatcher {
     private readonly explainer: ExplainerAgent,
     private readonly qa: QaAgent,
     private readonly quizAgents: QuizAgents,
-    private readonly grader: GraderAgent
+    private readonly grader: GraderAgent,
+    private readonly repair: MisconceptionRepairAgent
   ) {}
 
   async dispatch(
@@ -140,7 +193,12 @@ export class ToolDispatcher {
       widgets: [] as Widget[]
     };
 
-    for (const action of actions) {
+    // Ver3 Phase 1: inline verifier — apply pedagogy policy rules to actions
+    // before dispatch. Returns the (possibly patched) action list; mutations
+    // are additive where possible (see R4/R5 hintDirective).
+    const patchedActions = this.verifyAndPatchPlan(next, actions, context);
+
+    for (const action of patchedActions) {
       try {
         await this.executeTool(next, action.tool, action.args, context, ui, newMessages, options);
       } catch (error) {
@@ -155,6 +213,237 @@ export class ToolDispatcher {
     }
 
     return { state: next, newMessages, ui };
+  }
+
+  /**
+   * Ver3 Phase 1 — inline pedagogy policy verifier.
+   *
+   * Applies rules R1..R10 in the fixed order
+   *   R1 → R7 → R8 → R6 → R9 → R5 → R4 → R2 → R3 → R10
+   * R9 must precede R3 so that EXPLAIN_PAGE is injected before the budget trim.
+   *
+   * All mutations are additive where possible: existing args keys (notably
+   * `questionText`) are never overwritten. `hintDirective`/`hintDepth` are
+   * added to `ANSWER_QUESTION.args` so downstream Qa agents may consume them
+   * in Phase 2 without breaking existing assertions.
+   *
+   * Drops (trims) only happen in R2 (HOLD_BACK), R3 (budget) and R10 (hard cap).
+   *
+   * R8 is intentionally a silent "mode-wins" rule with no action mutation —
+   * this preserves the Ver2 "repairs misconception" test path where the
+   * fallback default policy (ADVANCE) does not match the active intervention
+   * stage but the existing flow must continue unchanged.
+   */
+  private verifyAndPatchPlan(
+    state: SessionState,
+    actions: OrchestratorAction[],
+    context: DispatchContext
+  ): OrchestratorAction[] {
+    const verifierWarnings: string[] = [];
+    let policy: PedagogyPolicy | undefined = context.pedagogyPolicy;
+    let patched: OrchestratorAction[] = [...actions];
+
+    // R1 — Missing policy (safety net; normalizePlan should cover this first).
+    if (!policy) {
+      policy = {
+        mode: "ADVANCE",
+        reason: "R1 default",
+        allowDirectAnswer: true,
+        hintDepth: "LOW",
+        interventionBudget: 1
+      };
+      verifierWarnings.push("policy_missing");
+    }
+
+    const stage = state.activeIntervention?.stage;
+    const interventionPage = state.activeIntervention?.page ?? state.currentPage;
+
+    // R7 — DIAGNOSE → MISCONCEPTION_REPAIR upgrade when student already replied.
+    if (policy.mode === "DIAGNOSE" && stage === "AWAITING_DIAGNOSIS_REPLY") {
+      policy = { ...policy, mode: "MISCONCEPTION_REPAIR" };
+      verifierWarnings.push("diagnose_upgraded_to_repair");
+    }
+
+    // R8 — Stage/mode mismatch. Mode-wins: do not mutate actions. This path
+    // preserves the Ver2 "repairs misconception" test where the fallback
+    // default policy is ADVANCE but the session still has an awaiting stage.
+    if (
+      stage === "AWAITING_DIAGNOSIS_REPLY" &&
+      policy.mode !== "MISCONCEPTION_REPAIR" &&
+      policy.mode !== "DIAGNOSE"
+    ) {
+      verifierWarnings.push("stage_mode_mismatch");
+    }
+
+    // R6 — Auto-inject REPAIR_MISCONCEPTION when mode says repair but action is missing.
+    if (
+      policy.mode === "MISCONCEPTION_REPAIR" &&
+      stage === "AWAITING_DIAGNOSIS_REPLY" &&
+      !patched.some(
+        (a) => a.type === "CALL_TOOL" && a.tool === "REPAIR_MISCONCEPTION"
+      )
+    ) {
+      const replyText =
+        typeof context.eventPayload?.text === "string"
+          ? (context.eventPayload.text as string)
+          : "";
+      if (replyText.trim()) {
+        patched = [
+          {
+            type: "CALL_TOOL",
+            tool: "REPAIR_MISCONCEPTION",
+            args: {
+              page: interventionPage,
+              studentReply: replyText
+            }
+          },
+          ...patched
+        ];
+        verifierWarnings.push("repair_injected");
+      } else {
+        verifierWarnings.push("repair_injection_skipped_no_reply");
+      }
+    }
+
+    // R9 — EXPLAIN_FIRST navigation safety: prepend EXPLAIN_PAGE before any quiz.
+    if (
+      policy.mode === "EXPLAIN_FIRST" &&
+      patched.some(
+        (a) => a.type === "CALL_TOOL" && a.tool.startsWith("GENERATE_QUIZ_")
+      ) &&
+      !patched.some((a) => a.type === "CALL_TOOL" && a.tool === "EXPLAIN_PAGE")
+    ) {
+      patched = [
+        {
+          type: "CALL_TOOL",
+          tool: "EXPLAIN_PAGE",
+          args: {
+            page: state.currentPage,
+            detailLevel: "NORMAL"
+          }
+        },
+        ...patched
+      ];
+      verifierWarnings.push("explain_prepended");
+    }
+
+    // R5 — MINIMAL_HINT: additive hint directive on every ANSWER_QUESTION.
+    if (policy.mode === "MINIMAL_HINT") {
+      let anyTouched = false;
+      patched = patched.map((a) => {
+        if (a.type !== "CALL_TOOL" || a.tool !== "ANSWER_QUESTION") return a;
+        anyTouched = true;
+        return {
+          ...a,
+          args: {
+            ...a.args,
+            hintDirective: "HINT_ONLY",
+            hintDepth: "LOW"
+          }
+        };
+      });
+      if (anyTouched) verifierWarnings.push("minimal_hint_enforced");
+    }
+
+    // R4 — Direct answer block: additive hint directive. `questionText` is
+    // intentionally untouched to preserve toolDispatcher.test.ts assertions.
+    if (policy.allowDirectAnswer === false) {
+      let anyTouched = false;
+      const directiveDepth = policy.hintDepth;
+      patched = patched.map((a) => {
+        if (a.type !== "CALL_TOOL" || a.tool !== "ANSWER_QUESTION") return a;
+        anyTouched = true;
+        return {
+          ...a,
+          args: {
+            ...a.args,
+            hintDirective: "HINT_ONLY",
+            hintDepth: directiveDepth
+          }
+        };
+      });
+      if (anyTouched) verifierWarnings.push("hint_directive_attached");
+    }
+
+    // R2 — HOLD_BACK: keep only a single ORCHESTRATOR message. If the plan
+    // is empty or has no orchestrator message, synthesize a canned one.
+    if (policy.mode === "HOLD_BACK") {
+      const firstMsg = patched.find(
+        (a) =>
+          a.type === "CALL_TOOL" && a.tool === "APPEND_ORCHESTRATOR_MESSAGE"
+      );
+      if (firstMsg) {
+        if (patched.length > 1) {
+          patched = [firstMsg];
+          verifierWarnings.push("hold_back_trimmed");
+        }
+      } else {
+        patched = [
+          {
+            type: "CALL_TOOL",
+            tool: "APPEND_ORCHESTRATOR_MESSAGE",
+            args: {
+              contentMarkdown:
+                "좋습니다. 잠시 스스로 생각해 볼 시간을 드릴게요. 막히면 언제든 말씀해 주세요."
+            }
+          }
+        ];
+        verifierWarnings.push("hold_back_filled");
+      }
+    }
+
+    // R3 — interventionBudget: trim intervention tools from the end.
+    // NOTE: default budget from R1 is 1 (not 0) so existing tests dispatching
+    // [EXPLAIN_PAGE, APPEND_ORCHESTRATOR_MESSAGE] (1 intervention tool) are
+    // preserved without mutation.
+    {
+      let interventionCount = 0;
+      for (const a of patched) {
+        if (a.type === "CALL_TOOL" && INTERVENTION_TOOLS.has(a.tool)) {
+          interventionCount += 1;
+        }
+      }
+      if (interventionCount > policy.interventionBudget) {
+        let overflow = interventionCount - policy.interventionBudget;
+        const kept: OrchestratorAction[] = [];
+        for (let i = patched.length - 1; i >= 0; i -= 1) {
+          const a = patched[i];
+          if (
+            overflow > 0 &&
+            a.type === "CALL_TOOL" &&
+            INTERVENTION_TOOLS.has(a.tool)
+          ) {
+            overflow -= 1;
+            continue;
+          }
+          kept.push(a);
+        }
+        patched = kept.reverse();
+        verifierWarnings.push("budget_trimmed");
+      }
+    }
+
+    // R10 — Hard cap on total tool count.
+    if (patched.length > VERIFIER_HARD_CAP) {
+      patched = patched.slice(0, VERIFIER_HARD_CAP);
+      verifierWarnings.push("hard_cap_applied");
+    }
+
+    // Observability sink — stable `[verifier]` prefix for grep/incident review.
+    if (verifierWarnings.length > 0) {
+      console.log(
+        "[verifier] " +
+          JSON.stringify({
+            sessionId: state.sessionId,
+            mode: policy.mode,
+            reason: policy.reason,
+            warnings: verifierWarnings,
+            tools: patched.map((a) => (a.type === "CALL_TOOL" ? a.tool : a.type))
+          })
+      );
+    }
+
+    return patched;
   }
 
   private async getPageContext(
@@ -239,11 +528,15 @@ export class ToolDispatcher {
       }
 
       case "SET_CURRENT_PAGE": {
+        const previousPage = state.currentPage;
         const targetPage = Math.max(
           1,
           Math.min(context.lecture.pdf.numPages || 1, Number(args.page ?? state.currentPage))
         );
         state.currentPage = targetPage;
+        if (targetPage !== previousPage) {
+          resetQaThread(state);
+        }
         const targetPageState = ensurePageState(state, targetPage);
         targetPageState.lastTouchedAt = nowIso();
         if (targetPageState.status === "NEW") {
@@ -272,6 +565,7 @@ export class ToolDispatcher {
 
     switch (tool) {
       case "EXPLAIN_PAGE": {
+        resetQaThread(state);
         const detailLevel =
           String(args.detailLevel ?? "NORMAL").toUpperCase() === "DETAILED"
             ? "DETAILED"
@@ -315,6 +609,13 @@ export class ToolDispatcher {
 
       case "ANSWER_QUESTION": {
         const question = String(args.questionText ?? context.eventPayload?.text ?? "");
+        const threadMode =
+          String(args.threadMode ?? "").toUpperCase() === "FOLLOW_UP" ||
+          (String(args.threadMode ?? "").trim() === "" && hasActiveQaThreadForPage(state, page))
+            ? "FOLLOW_UP"
+            : "START_NEW";
+        const qaThreadDigest =
+          threadMode === "FOLLOW_UP" ? buildQaThreadDigest(state, page) : "";
         const answer = await this.qa.runStream(
           {
             fileRef,
@@ -326,7 +627,8 @@ export class ToolDispatcher {
               prev: toolContext.prev,
               next: toolContext.next
             },
-            learnerMemoryDigest
+            learnerMemoryDigest,
+            qaThreadDigest
           },
           (delta) =>
             options?.onStreamEvent?.({
@@ -344,6 +646,82 @@ export class ToolDispatcher {
           thoughtSummaryMarkdown: answer.thoughtSummary || undefined
         });
         newMessages.push(msg);
+        appendQaThreadTurn(state, {
+          page,
+          question,
+          answerMarkdown: answer.markdown,
+          threadMode: threadMode as QaThreadMode
+        });
+        break;
+      }
+
+      case "REPAIR_MISCONCEPTION": {
+        const intervention = state.activeIntervention;
+        const studentReply = String(args.studentReply ?? context.eventPayload?.text ?? "").trim();
+        if (!intervention || intervention.stage !== "AWAITING_DIAGNOSIS_REPLY" || !studentReply) {
+          appendAssistantMessage(state, newMessages, ui, {
+            agent: "SYSTEM",
+            contentMarkdown: "진단 답변을 교정 흐름에 연결하지 못했습니다. 다시 시도해 주세요."
+          });
+          break;
+        }
+
+        const repairQuestion = buildRepairQuestion(intervention, studentReply);
+        const repaired = await this.repair.runStream(
+          {
+            fileRef,
+            page,
+            learnerLevel: state.learnerModel.level,
+            pageText: toolContext.pageText,
+            neighborText: {
+              prev: toolContext.prev,
+              next: toolContext.next
+            },
+            learnerMemoryDigest,
+            repairQuestion
+          },
+          (delta) =>
+            options?.onStreamEvent?.({
+              type: "agent_delta",
+              tool,
+              agent: "EXPLAINER",
+              channel: delta.channel,
+              text: delta.text
+            })
+        );
+
+        const repairMsg = appendMessage(state, {
+          role: "assistant",
+          agent: "EXPLAINER",
+          contentMarkdown: repaired.markdown,
+          thoughtSummaryMarkdown: repaired.thoughtSummary || undefined
+        });
+        newMessages.push(repairMsg);
+
+        applyLearnerMemoryWrite(state, buildRepairMemoryWrite(intervention, studentReply));
+        state.activeIntervention = {
+          ...intervention,
+          stage: "REPAIR_DELIVERED",
+          lastUpdatedAt: nowIso()
+        };
+        pageState.status = "REVIEW_DONE";
+        pageState.lastTouchedAt = nowIso();
+        state.feedback.push({
+          id: makeId("fb"),
+          createdAt: nowIso(),
+          page,
+          progressText: progressText(state.currentPage),
+          learnerLevel: state.learnerModel.level,
+          notesMarkdown: `- 오답 교정 완료: ${intervention.focusConcepts.join(", ") || "현재 개념"}`
+        });
+        appendAssistantMessage(state, newMessages, ui, {
+          agent: "ORCHESTRATOR",
+          contentMarkdown: "방금 헷갈린 부분만 짧게 교정했습니다. 같은 개념을 빠르게 다시 확인해볼까요?",
+          widget: {
+            type: "BINARY_CHOICE",
+            decisionType: "RETEST_DECISION"
+          }
+        });
         break;
       }
 
@@ -444,15 +822,64 @@ export class ToolDispatcher {
         });
         newMessages.push(gradeMsg);
 
-        if (ratio < appConfig.passScoreRatio) {
-          appendAssistantMessage(state, newMessages, ui, {
-            agent: "ORCHESTRATOR",
-            contentMarkdown: "점수가 기준 미달입니다. 복습을 진행할까요?",
-            widget: {
-              type: "BINARY_CHOICE",
-              decisionType: "REVIEW_DECISION"
-            }
+        try {
+          const assessment = buildQuizAssessment({
+            quiz: quizRecord,
+            grading: quizRecord.grading,
+            recentQuizzes: state.quizzes,
+            passScoreRatio: appConfig.passScoreRatio,
+            integratedMemory: state.integratedMemory,
+            activeIntervention: state.activeIntervention
           });
+          upsertQuizAssessment(state, assessment);
+          console.log(
+            "[assessment] " +
+              JSON.stringify(
+                buildAssessmentLogPayload({
+                  state,
+                  assessment,
+                  repairTriggered: ratio < appConfig.passScoreRatio
+                })
+              )
+          );
+        } catch (error) {
+          console.warn(
+            "[assessment_error] " +
+              JSON.stringify({
+                sessionId: state.sessionId,
+                lectureId: state.lectureId,
+                quizId,
+                message: error instanceof Error ? error.message : "unknown assessment error"
+              })
+          );
+        }
+
+        if (ratio < appConfig.passScoreRatio) {
+          const intervention = createQuizRepairIntervention(
+            quizRecord,
+            state.integratedMemory,
+            nowIso(),
+            state.quizzes
+          );
+          if (intervention) {
+            state.activeIntervention = intervention;
+            pageState.status = "REVIEW_IN_PROGRESS";
+            appendAssistantMessage(state, newMessages, ui, {
+              agent: "ORCHESTRATOR",
+              contentMarkdown: intervention.diagnosticPrompt
+            });
+          } else {
+            appendAssistantMessage(state, newMessages, ui, {
+              agent: "ORCHESTRATOR",
+              contentMarkdown: "점수가 기준 미달입니다. 복습을 진행할까요?",
+              widget: {
+                type: "BINARY_CHOICE",
+                decisionType: "REVIEW_DECISION"
+              }
+            });
+          }
+        } else {
+          state.activeIntervention = null;
         }
 
         ui.disableQuizClose = false;
@@ -511,15 +938,64 @@ export class ToolDispatcher {
         });
         newMessages.push(gradeMsg);
 
-        if (quizRecord.grading.scoreRatio < appConfig.passScoreRatio) {
-          appendAssistantMessage(state, newMessages, ui, {
-            agent: "ORCHESTRATOR",
-            contentMarkdown: "점수가 기준 미달입니다. 복습을 진행할까요?",
-            widget: {
-              type: "BINARY_CHOICE",
-              decisionType: "REVIEW_DECISION"
-            }
+        try {
+          const assessment = buildQuizAssessment({
+            quiz: quizRecord,
+            grading: quizRecord.grading,
+            recentQuizzes: state.quizzes,
+            passScoreRatio: appConfig.passScoreRatio,
+            integratedMemory: state.integratedMemory,
+            activeIntervention: state.activeIntervention
           });
+          upsertQuizAssessment(state, assessment);
+          console.log(
+            "[assessment] " +
+              JSON.stringify(
+                buildAssessmentLogPayload({
+                  state,
+                  assessment,
+                  repairTriggered: quizRecord.grading.scoreRatio < appConfig.passScoreRatio
+                })
+              )
+          );
+        } catch (error) {
+          console.warn(
+            "[assessment_error] " +
+              JSON.stringify({
+                sessionId: state.sessionId,
+                lectureId: state.lectureId,
+                quizId,
+                message: error instanceof Error ? error.message : "unknown assessment error"
+              })
+          );
+        }
+
+        if (quizRecord.grading.scoreRatio < appConfig.passScoreRatio) {
+          const intervention = createQuizRepairIntervention(
+            quizRecord,
+            state.integratedMemory,
+            nowIso(),
+            state.quizzes
+          );
+          if (intervention) {
+            state.activeIntervention = intervention;
+            pageState.status = "REVIEW_IN_PROGRESS";
+            appendAssistantMessage(state, newMessages, ui, {
+              agent: "ORCHESTRATOR",
+              contentMarkdown: intervention.diagnosticPrompt
+            });
+          } else {
+            appendAssistantMessage(state, newMessages, ui, {
+              agent: "ORCHESTRATOR",
+              contentMarkdown: "점수가 기준 미달입니다. 복습을 진행할까요?",
+              widget: {
+                type: "BINARY_CHOICE",
+                decisionType: "REVIEW_DECISION"
+              }
+            });
+          }
+        } else {
+          state.activeIntervention = null;
         }
 
         ui.disableQuizClose = false;

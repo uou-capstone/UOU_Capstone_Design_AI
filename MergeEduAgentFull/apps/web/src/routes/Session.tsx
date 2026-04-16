@@ -239,6 +239,8 @@ export function SessionRoute() {
               ...prev,
               currentPage: response.patch.currentPage,
               learnerModel: response.patch.learnerModel,
+              activeIntervention:
+                response.patch.activeIntervention ?? prev.activeIntervention ?? null,
               messages: [
                 ...(
                   event.type === "USER_MESSAGE" && options?.optimisticUserMessageId

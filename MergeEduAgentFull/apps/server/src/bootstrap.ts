@@ -1,5 +1,6 @@
 import { ExplainerAgent } from "./services/agents/ExplainerAgent.js";
 import { GraderAgent } from "./services/agents/GraderAgent.js";
+import { MisconceptionRepairAgent } from "./services/agents/MisconceptionRepairAgent.js";
 import { Orchestrator } from "./services/agents/Orchestrator.js";
 import { QaAgent } from "./services/agents/QaAgent.js";
 import { QuizAgents } from "./services/agents/QuizAgents.js";
@@ -21,11 +22,12 @@ export async function createServerDeps() {
   const qa = new QaAgent(bridge);
   const quizAgents = new QuizAgents(bridge);
   const grader = new GraderAgent(bridge);
+  const repair = new MisconceptionRepairAgent(bridge);
 
   const reducer = new StateReducer();
   const orchestrator = new Orchestrator();
   const summary = new SummaryService();
-  const dispatcher = new ToolDispatcher(explainer, qa, quizAgents, grader);
+  const dispatcher = new ToolDispatcher(explainer, qa, quizAgents, grader, repair);
   const engine = new OrchestrationEngine(
     store,
     reducer,

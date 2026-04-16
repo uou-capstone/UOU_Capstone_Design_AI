@@ -1,8 +1,13 @@
 import { AppEvent, SessionState } from "../../types/domain.js";
+import { resetQaThread } from "./QaThreadService.js";
 import { appendMessage, ensurePageState, nowIso } from "./utils.js";
 
 function isNextPageCommand(text: string): boolean {
   return /(다음\s*페이지|다음으로|넘어가|다음\s*슬라이드|next\s*page|next\b)/i.test(text);
+}
+
+function clearActiveIntervention(state: SessionState): void {
+  state.activeIntervention = null;
 }
 
 export class StateReducer {
@@ -31,6 +36,8 @@ export class StateReducer {
           if (pageState.status === "NEW" || pageState.status === "DONE") {
             pageState.status = "EXPLAINING";
           }
+          clearActiveIntervention(next);
+          resetQaThread(next);
         } else if (pageState.status === "EXPLAINING") {
           pageState.status = "NEW";
         }
@@ -51,6 +58,8 @@ export class StateReducer {
             if (pageState.status === "NEW") {
               pageState.status = "EXPLAINING";
             }
+            clearActiveIntervention(next);
+            resetQaThread(next);
           }
         }
         break;
@@ -64,6 +73,8 @@ export class StateReducer {
           if (pageState.status === "NEW") {
             pageState.status = "EXPLAINING";
           }
+          clearActiveIntervention(next);
+          resetQaThread(next);
         }
         break;
       }
@@ -94,6 +105,8 @@ export class StateReducer {
           if (nextPageState.status === "NEW") {
             nextPageState.status = "EXPLAINING";
           }
+          clearActiveIntervention(next);
+          resetQaThread(next);
         } else {
           const pageState = ensurePageState(next, next.currentPage);
           pageState.lastTouchedAt = nowIso();
@@ -111,6 +124,10 @@ export class StateReducer {
         const pageState = ensurePageState(next, next.currentPage);
         pageState.status = accept ? "REVIEW_IN_PROGRESS" : "DONE";
         pageState.lastTouchedAt = nowIso();
+        if (accept) {
+          resetQaThread(next);
+        }
+        clearActiveIntervention(next);
         break;
       }
       case "RETEST_DECISION": {
@@ -118,6 +135,7 @@ export class StateReducer {
         const pageState = ensurePageState(next, next.currentPage);
         pageState.status = accept ? "QUIZ_IN_PROGRESS" : "DONE";
         pageState.lastTouchedAt = nowIso();
+        clearActiveIntervention(next);
         break;
       }
       case "SAVE_AND_EXIT": {

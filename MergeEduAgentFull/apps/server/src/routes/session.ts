@@ -1,8 +1,28 @@
 import path from "node:path";
 import { Router } from "express";
 import { ServerDeps } from "../bootstrap.js";
-import { EventApiRequest } from "../types/domain.js";
+import { EventApiRequest, SessionState } from "../types/domain.js";
 import { EventStreamChunk } from "../services/engine/OrchestrationEngine.js";
+
+export function buildProtectedSessionSaveState(
+  state: SessionState,
+  clientState?: Partial<SessionState>
+): SessionState {
+  const ignoredKeys = Object.keys(clientState ?? {});
+  if (ignoredKeys.length > 0) {
+    console.warn(
+      "[session_save] " +
+        JSON.stringify({
+          sessionId: state.sessionId,
+          ignoredKeys
+        })
+    );
+  }
+  return {
+    ...state,
+    updatedAt: new Date().toISOString()
+  };
+}
 
 export function sessionRouter(deps: ServerDeps): Router {
   const router = Router();
@@ -67,13 +87,7 @@ export function sessionRouter(deps: ServerDeps): Router {
         res.status(404).json({ ok: false, error: "Session not found" });
         return;
       }
-      await deps.store.saveSession({
-        ...state,
-        ...(req.body?.state ?? {}),
-        sessionId: state.sessionId,
-        lectureId: state.lectureId,
-        updatedAt: new Date().toISOString()
-      });
+      await deps.store.saveSession(buildProtectedSessionSaveState(state, req.body?.state));
       res.json({ ok: true });
     } catch (error) {
       next(error);

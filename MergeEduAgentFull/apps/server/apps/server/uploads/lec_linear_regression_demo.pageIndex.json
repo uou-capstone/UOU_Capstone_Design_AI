@@ -1,0 +1,75 @@
+{
+  "lectureId": "lec_linear_regression_demo",
+  "numPages": 17,
+  "pages": [
+    {
+      "page": 1,
+      "text": "AI Convergence [ Bigdata Analytics ] linear Regression DaeHan Ahn"
+    },
+    {
+      "page": 2,
+      "text": "Regression Analysis  What is Regression ?  Regression analysis is a statistical method used to model the relationship between  independent variables (features) and a  dependent variable (target) in order to  predict continuous numerical values.  Purpose of Regression  Understand how input variables affect the target variable  Estimate unknown continuous values  Quantify the strength and direction of relationships  Support decision-making based on data  Types  Simple Regression : an independent variable  → 푦푦 = 푊푊푊푊 + 푏푏  Multiple Regression : more than 2 independent variables  → 푦푦 = 푊푊 1 푊푊 1 + 푊푊 2 푊푊 2 + ⋯ + 푏푏  Logistic Regression : When the dependent variable is categorical (0 or 1)"
+    },
+    {
+      "page": 3,
+      "text": "Use It When...  1. The target variable is continuous  How much will next year's revenue be?  What will this patient's blood pressure level be?  2. You want to predict numerical values  If we increase ad spend by $10K, how much will sales grow?  If a student studies 1 more hour, how many more points will they score?  3. You Want to Identify the Most Influential Variables  What drives house prices more  — size or location?  4. Your outcome is a continuous number -> Standard Regression   5. Your outcome is a category (Y/N, P/F) -> Logistic Regression"
+    },
+    {
+      "page": 4,
+      "text": "Limitations of Regression Analysis  1. Assumes a Linear Relationship  If the real relationship is curved or complex, the model will be inaccurate  2. Sensitive to Outliers  A few extreme data points can heavily distort the entire model  One bad data point can pull the regression line significantly off course  3. Correlation ≠ Causation  Just because two variables are related doesn't mean one causes the other  e.g., Ice cream sales and drowning rates are correlated  — but ice cream doesn't  cause drowning (both increase in summer)  4. Multicollinearity (Multiple Regression)  When independent variables are too correlated with each other, coefficients  become unreliable  5. Requires Clean, Sufficient Data  Missing values, small sample sizes, or biased data lead to poor results  Garbage in → Garbage out"
+    },
+    {
+      "page": 5,
+      "text": "Basic Assumptions of Linear Regression  1. Linearity  The relationship between independent variables and the dependent variable should be  approximately linear  Check with: Scatter plot, Residual vs Fitted plot  Solution: apply log/polynomial transformation  2. Homoscedasticity (Constant Variance)  The variance of residuals (errors) should be consistent across all levels of X  Check with: Residual plot, Scatter plot  Solution:  use weighted regression   3. Normality of Residuals  The residuals (errors) should be normally distributed  Check with:  Histogram, Q -Q plot, Shapiro -Wilk test  Solution:  increase sample size   4. No Multicollinearity (Multiple Regression only)  Independent variables should not be highly correlated with each other  High correlation makes coefficients unstable and uninterpretable  Check with: VIF (Variance Inflation Factor)  Solution: remove or combine correlated variables"
+    },
+    {
+      "page": 6,
+      "text": "Evaluation Metrics for Linear Regression  1. Mean Absolute Error (MAE)  Measures the average absolute difference between actual and predicted values  MAE =  1 푛푛 ∑ 푦푦 푖푖 − � 푦푦 푖푖  Easy to interpret  Same unit as target variable  2. Mean Squared Error (MSE)  Squares errors before averaging  MSE =  1 푛푛 ∑ 푦푦 푖푖 − � 푦푦 푖푖 2  Penalizes large errors strongly  Sensitive to outliers  3. Root Mean Squared Error (RMSE)  Square root of MSE  RMSE =  = 1 푛푛 ∑ 푦푦 푖푖 − � 푦푦 푖푖 2  Same unit as target variable  Widely used in practice  4. R -squared (Coefficient of Determination)  Measures how much variance is explained by the model  푅푅 2 = 1 − ∑ 푦푦 푖푖 − � 푦푦 푖푖 2 ∑ 푦푦 푖푖 − � 푦푦 2  Value closer to 1 means better fit  Easy to compare models"
+    },
+    {
+      "page": 7,
+      "text": "Practice: Linear Regression (Scikit -learn)  Generate Dataset import numpy as  np import matplotlib .pyplot as  plt # Generate Dataset np .random .seed   (42 )  X = np .random .randint (0,  101  , size =(100  ,  1))  # Independent Variable (0~100 value, #100) y = 2 * X + np .random .randint (0,  51 , size =(100  ,  1))  #  Target variable (add noise) # Visualization plt  .scatter (X,  y)  plt  .title ('Dataset' ) plt  .xlabel ('X'  ) plt  .ylabel ('y'  ) plt  .show   ()"
+    },
+    {
+      "page": 8,
+      "text": "Practice: Linear Regression (Scikit -learn)  Train Regression Model  Q1: Import  LinearRegression  from  Sklearn  library  Q2: Train the model using ‘ fit ’ function from sklearn .linear_model  import ___________ model =  ______________() model.___(X, y)"
+    },
+    {
+      "page": 9,
+      "text": "Practice: Linear Regression (Scikit -learn)  Train Regression Model  Q: Predict Y for input X, and plot the regression line using plt.plot  (matplotlib) y_pred  = model._____(X) plt.scatter( X, y )  plt.____(X,  y_pred , color ='red') plt.title('Linear Regression') plt.xlabel('X') plt.ylabel('y') plt.show()"
+    },
+    {
+      "page": 10,
+      "text": "Practice: Linear Regression ( Statsmodels )  Statsmodels  It basically doesn’t have an intercept (bias b)  Q:  Add the intercept using ‘ add_constant ’ import  numpy  as  np import  statsmodels .api as  sm import  matplotlib. pyplot  as plt # Generate Dataset np.random.seed(42 )  X = np. random.randint(0,  101, size =( 100, 1))  # Independent Variable (0~100 value, #100) y = 2 *  X +  np.random.randint( 0, 51 , size=( 100,  1))  # Target variable (add noise) # add intercept (bias b) X_sm =  sm._______( X) # OLS (Ordinary Least Squares) model and train model =  sm.OLS(y , X_sm) results  = model. ___() print(results.summary())"
+    },
+    {
+      "page": 11,
+      "text": "Practice: Linear Regression ( Statsmodels )  Statsmodels  (Result)"
+    },
+    {
+      "page": 12,
+      "text": "Practice: Linear Regression ( Statsmodels )  Linearity pred =  results.predict(X_sm) plt.scatter( pred , y) plt.xlabel(\"Prediction\") plt.ylabel(\"Target Values\") plt.title(\"Prediction vs. Target Values\") plt.show() If the data points generally form a straight - line pattern, the relationship can be considered linear If a curved shape or complex pattern  appears, it may indicate a nonlinear  relationship"
+    },
+    {
+      "page": 13,
+      "text": "Practice: Linear Regression ( Statsmodels )  Normality of Residuals  Shapiro- Wilk test • It takes a value between 0 and 1 • A value closer to 1 indicates that the distribution is close to a normal  distribution from scipy import  stats # Evaluate residual residuals =  results.resid # Shapiro-Wilk test shapiro_test  = stats.shapiro(residuals) print(\"Shapiro-Wilk Test: \\nStatistic :\", shapiro_test [0 ], \"\\np -Value:\", shapiro_test[ 1])"
+    },
+    {
+      "page": 14,
+      "text": "Practice: Linear Regression ( Statsmodels )  Normality of Residuals  Q-Q plot • A QQ plot (Quantile –Quantile Plot) is a graph that compares the  quantiles of sample data with the quantiles of a normal distribution • If the data follows a normal distribution, the points are generally  drawn close to a straight line # Q-Q Plot plt.figure(figsize =(6, 4)) sm.qqplot(residuals, line ='s') plt.title('Q -Q Plot') plt.show()"
+    },
+    {
+      "page": 15,
+      "text": "Practice: Linear Regression ( Statsmodels )  Homoscedasticity  Breusch –Pagan Test • The  Breusch–Pagan test  is a statistical method used to examine whether the  assumption of  homoscedasticity  is valid in a linear regression model • The  p-value is more important than the test statistic itself ― p- value ≤ 0.05:  The test is statistically significant, indicating that heteroscedasticity  may exist in the residuals ― p- value > 0.05:  The test is not statistically significant, suggesting that assuming  homoscedasticity of residuals is reasonable from    statsmodels .stats .diagnostic  import  het_breuschpagan # Evaluate Residuals residuals  = results .resid # Breusch -Pagan test bp_test  = het_breuschpagan (residuals ,  results .model.exog ) print (\"Breusch -Pagan Test: \\nStatistic :\" ,  bp_test [0],   \"\\np-Value:\" ,  bp_test [1])"
+    },
+    {
+      "page": 16,
+      "text": "Practice: Linear Regression ( Statsmodels )  Multicollinearity import  pandas  as  pd np .random .seed   (42 ) X1  = np .random .randint (0,  101  ,  100  )  X2  = X1  + np .random .normal (0,  3,  100  )  X3  = np .random .randint (50 ,  201  ,  100  )  y = 2 * X1  + 4 * X2  + 1 * X3  + np .random .normal (0,  5,  100  )  df  = pd .DataFrame ({ 'X1'   :  X1 ,  'X2'   :  X2 ,  'X3'   :  X3 ,  'y'  :  y}) df .head   () from    statsmodels .stats .outliers_influence  import  variance_inflation_factor # Evaluate VIF X = df [[ 'X1'   ,  'X2'   ,  'X3'   ]] X = sm .add_constant (X) vif_data  = pd .DataFrame () vif_data [\"feature\" ]  = X.columns vif_data [\"VIF\" ]  = [variance_inflation_factor (X.values ,  i)  for   i in  range (X.shape [1])] print (vif_data ) VIF close to 1 generally indicates little or no multicollinearity • 1<VIF<5: Acceptable level • 5<VIF<10: Moderate multicollinearity • VIF>10: variable removal or transformation should be considered"
+    },
+    {
+      "page": 17,
+      "text": "Thank you ! Q & A"
+    }
+  ],
+  "createdAt": "2026-04-13T12:56:00.494Z"
+}
