@@ -102,7 +102,7 @@ if exist ".venv" (
 
 if not exist ".venv" (
   echo [run.cmd] Creating .venv with %SELECTED_PY%
-  cmd /c "%SELECTED_PY% -m venv .venv"
+  call %SELECTED_PY% -m venv .venv
   if errorlevel 1 (
     echo [run.cmd] Failed to create .venv using %SELECTED_PY%
     exit /b 1
@@ -169,7 +169,7 @@ exit /b 0
 set "PY_CMD=%~1"
 set "TMP_FILE=%TEMP%\mergeedu_pyver_%RANDOM%%RANDOM%.txt"
 if exist "%TMP_FILE%" del /q "%TMP_FILE%" >nul 2>nul
-cmd /c "%PY_CMD% -c ^"import sys;print(str(sys.version_info.major)+'.'+str(sys.version_info.minor))^"" > "%TMP_FILE%" 2>nul
+call %PY_CMD% -c "import sys;print(str(sys.version_info.major)+'.'+str(sys.version_info.minor))" > "%TMP_FILE%" 2>nul
 set "VER="
 if exist "%TMP_FILE%" (
   set /p VER=<"%TMP_FILE%"

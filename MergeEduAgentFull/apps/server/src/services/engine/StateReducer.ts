@@ -1,15 +1,36 @@
-import { AppEvent, SessionState } from "../../types/domain.js";
+import { AppEvent, QuizRecord, QuizType, SessionState } from "../../types/domain.js";
+import { getPageCommandIntent } from "./PageCommandIntent.js";
+import { resetQaThread } from "./QaThreadService.js";
 import { appendMessage, ensurePageState, nowIso } from "./utils.js";
 
-function isNextPageCommand(text: string): boolean {
-  return /(다음\s*페이지|다음으로|넘어가|다음\s*슬라이드|next\s*page|next\b)/i.test(text);
+function clearActiveIntervention(state: SessionState): void {
+  state.activeIntervention = null;
+}
+
+function findLatestQuizRecord(
+  state: SessionState,
+  quizId: string,
+  quizType?: QuizType | string
+): QuizRecord | undefined {
+  for (let index = state.quizzes.length - 1; index >= 0; index -= 1) {
+    const quiz = state.quizzes[index];
+    if (quiz?.id !== quizId) continue;
+    if (quizType && quiz.quizType !== quizType) continue;
+    return quiz;
+  }
+  return undefined;
 }
 
 export class StateReducer {
   reduce(state: SessionState, event: AppEvent, clientPage?: number): SessionState {
     const next: SessionState = structuredClone(state);
 
-    if (typeof clientPage === "number" && Number.isFinite(clientPage) && clientPage > 0) {
+    if (
+      event.type !== "QUIZ_SUBMITTED" &&
+      typeof clientPage === "number" &&
+      Number.isFinite(clientPage) &&
+      clientPage > 0
+    ) {
       next.currentPage = Math.floor(clientPage);
       ensurePageState(next, next.currentPage).lastTouchedAt = nowIso();
     }
@@ -31,6 +52,8 @@ export class StateReducer {
           if (pageState.status === "NEW" || pageState.status === "DONE") {
             pageState.status = "EXPLAINING";
           }
+          clearActiveIntervention(next);
+          resetQaThread(next);
         } else if (pageState.status === "EXPLAINING") {
           pageState.status = "NEW";
         }
@@ -44,13 +67,17 @@ export class StateReducer {
             agent: "SYSTEM",
             contentMarkdown: text
           });
-          if (isNextPageCommand(text)) {
-            next.currentPage += 1;
+          const pageIntent = getPageCommandIntent(text);
+          if (pageIntent) {
+            next.currentPage =
+              pageIntent === "NEXT" ? next.currentPage + 1 : Math.max(1, next.currentPage - 1);
             const pageState = ensurePageState(next, next.currentPage);
             pageState.lastTouchedAt = nowIso();
             if (pageState.status === "NEW") {
               pageState.status = "EXPLAINING";
             }
+            clearActiveIntervention(next);
+            resetQaThread(next);
           }
         }
         break;
@@ -64,6 +91,8 @@ export class StateReducer {
           if (pageState.status === "NEW") {
             pageState.status = "EXPLAINING";
           }
+          clearActiveIntervention(next);
+          resetQaThread(next);
         }
         break;
       }
@@ -94,6 +123,8 @@ export class StateReducer {
           if (nextPageState.status === "NEW") {
             nextPageState.status = "EXPLAINING";
           }
+          clearActiveIntervention(next);
+          resetQaThread(next);
         } else {
           const pageState = ensurePageState(next, next.currentPage);
           pageState.lastTouchedAt = nowIso();
@@ -101,8 +132,13 @@ export class StateReducer {
         break;
       }
       case "QUIZ_SUBMITTED": {
+        const quizId = String(event.payload?.quizId ?? "");
+        const quizType = String(event.payload?.quizType ?? "").toUpperCase();
+        const submittedQuiz = findLatestQuizRecord(next, quizId, quizType);
+        if (submittedQuiz && Number.isFinite(submittedQuiz.createdFromPage)) {
+          next.currentPage = Math.max(1, Math.floor(submittedQuiz.createdFromPage));
+        }
         const pageState = ensurePageState(next, next.currentPage);
-        pageState.status = "QUIZ_GRADED";
         pageState.lastTouchedAt = nowIso();
         break;
       }
@@ -111,6 +147,10 @@ export class StateReducer {
         const pageState = ensurePageState(next, next.currentPage);
         pageState.status = accept ? "REVIEW_IN_PROGRESS" : "DONE";
         pageState.lastTouchedAt = nowIso();
+        if (accept) {
+          resetQaThread(next);
+        }
+        clearActiveIntervention(next);
         break;
       }
       case "RETEST_DECISION": {
@@ -118,6 +158,7 @@ export class StateReducer {
         const pageState = ensurePageState(next, next.currentPage);
         pageState.status = accept ? "QUIZ_IN_PROGRESS" : "DONE";
         pageState.lastTouchedAt = nowIso();
+        clearActiveIntervention(next);
         break;
       }
       case "SAVE_AND_EXIT": {

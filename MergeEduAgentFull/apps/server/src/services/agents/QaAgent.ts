@@ -13,6 +13,7 @@ export class QaAgent {
     pageText: string;
     neighborText: { prev: string; next: string };
     learnerMemoryDigest: string;
+    qaThreadDigest?: string;
   }): Promise<string> {
     const response = await this.runStream(input);
     return response.markdown || "현재 질문에 대한 답변을 생성하지 못했습니다.";
@@ -27,8 +28,10 @@ export class QaAgent {
       pageText: string;
       neighborText: { prev: string; next: string };
       learnerMemoryDigest: string;
+      qaThreadDigest?: string;
     },
-    onDelta?: (delta: { channel: "thought" | "answer"; text: string }) => void
+    onDelta?: (delta: { channel: "thought" | "answer"; text: string }) => void,
+    signal?: AbortSignal
   ): Promise<{ markdown: string; thoughtSummary: string }> {
     const response = await this.bridge.answerQuestionStream(
       {
@@ -39,9 +42,11 @@ export class QaAgent {
         learnerLevel: input.learnerLevel,
         pageText: input.pageText,
         neighborText: input.neighborText,
-        learnerMemoryDigest: input.learnerMemoryDigest
+        learnerMemoryDigest: input.learnerMemoryDigest,
+        qaThreadDigest: input.qaThreadDigest
       },
-      onDelta
+      onDelta,
+      signal
     );
     return {
       markdown: response.markdown || "현재 질문에 대한 답변을 생성하지 못했습니다.",

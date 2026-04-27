@@ -8,10 +8,13 @@
   ],
   "scripts": {
     "dev": "concurrently -n server,web,bridge -c cyan,magenta,yellow \"npm:dev -w apps/server\" \"npm:dev -w apps/web\" \"bash -lc 'source .venv/bin/activate && uvicorn --app-dir apps/ai-bridge main:app --host 127.0.0.1 --port ${AI_BRIDGE_PORT:-8001} --reload'\"",
+    "e2e:serve": "bash -lc 'rm -rf apps/server/data-e2e apps/server/uploads-e2e && PORT=4180 WEB_PORT=5180 APP_ORIGIN=http://127.0.0.1:5180 DATA_DIR=./apps/server/data-e2e UPLOAD_DIR=./apps/server/uploads-e2e MODEL_NAME=gemini-1.5-pro GOOGLE_API_KEY=test-key PASS_SCORE_RATIO=0.7 CONTEXT_MAX_CHARS=12000 RECENT_MESSAGES_N=12 AI_BRIDGE_URL=http://127.0.0.1:65535 AUTH_DEV_EXPOSE_VERIFICATION_CODE=true concurrently -n server,web -c cyan,magenta \"npm:dev -w apps/server\" \"npm:dev -w apps/web -- --host 127.0.0.1\"'",
     "build": "npm run build -w apps/server && npm run build -w apps/web",
-    "test": "npm run test -w apps/server"
+    "test": "npm run test -w apps/server",
+    "test:e2e": "playwright test"
   },
   "devDependencies": {
+    "@playwright/test": "^1.59.1",
     "concurrently": "^9.1.2"
   }
 }

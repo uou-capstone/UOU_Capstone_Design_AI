@@ -7,6 +7,48 @@ export type AgentName =
   | "SYSTEM";
 
 export type QuizType = "MCQ" | "OX" | "SHORT" | "ESSAY";
+export type UserRole = "teacher" | "student";
+
+export interface CurrentUser {
+  id: string;
+  email: string;
+  displayName: string;
+  role: UserRole;
+  inviteCode: string;
+  emailVerified: boolean;
+}
+
+export interface StudentInviteCandidate {
+  id: string;
+  displayName: string;
+  inviteCode: string;
+  maskedEmail: string;
+}
+
+export interface ClassroomStudent extends StudentInviteCandidate {
+  enrolledAt: string;
+}
+
+export type StudentReportScope = "CLASSROOM_AGGREGATE" | "STUDENT";
+export type CompetencyTrend = "UP" | "STEADY" | "DOWN";
+export type CompetencyOverallLevel =
+  | "EMERGING"
+  | "DEVELOPING"
+  | "PROFICIENT"
+  | "ADVANCED";
+export type CompetencyAnalysisStatus = "READY" | "SPARSE_DATA";
+export type CompetencyGenerationMode = "AI_ANALYZED" | "HEURISTIC_FALLBACK";
+export type StudentCompetencyKey =
+  | "CONCEPT_UNDERSTANDING"
+  | "QUESTION_QUALITY"
+  | "PROBLEM_SOLVING"
+  | "APPLICATION_TRANSFER"
+  | "QUIZ_ACCURACY"
+  | "LEARNING_PERSISTENCE"
+  | "SELF_REFLECTION"
+  | "CLASS_PARTICIPATION"
+  | "CONFIDENCE_GROWTH"
+  | "IMPROVEMENT_MOMENTUM";
 
 export interface Widget {
   type: "QUIZ_TYPE_PICKER" | "BINARY_CHOICE";
@@ -96,11 +138,100 @@ export interface SessionState {
     weakConcepts: string[];
     strongConcepts: string[];
   };
+  activeIntervention?: {
+    mode: "QUIZ_REPAIR";
+    page: number;
+    quizId: string;
+    scoreRatio: number;
+    wrongQuestionIds: string[];
+    focusConcepts: string[];
+    suspectedMisconceptions: string[];
+    diagnosticPrompt: string;
+    stage: "AWAITING_DIAGNOSIS_REPLY" | "REPAIR_DELIVERED";
+    createdAt: string;
+    lastUpdatedAt: string;
+  } | null;
 }
 
 export interface AiStatus {
   connected: boolean;
   message?: string;
+}
+
+export interface StudentCompetencyScore {
+  key: StudentCompetencyKey;
+  label: string;
+  score: number;
+  trend: CompetencyTrend;
+  summary: string;
+  evidence: string[];
+}
+
+export interface StudentActionRecommendation {
+  title: string;
+  description: string;
+}
+
+export interface StudentLectureInsight {
+  lectureId: string;
+  lectureTitle: string;
+  weekTitle: string;
+  questionCount: number;
+  quizCount: number;
+  averageQuizScore: number;
+  masteryLabel: string;
+}
+
+export interface StudentReportSourceStats {
+  lectureCount: number;
+  sessionCount: number;
+  completedPageCount: number;
+  pageCoverageRatio: number;
+  progressPageCount?: number;
+  progressCoverageRatio?: number;
+  questionCount: number;
+  quizCount: number;
+  gradedQuizCount: number;
+  averageQuizScore: number;
+  feedbackCount: number;
+  memoryRefreshCount: number;
+}
+
+export interface StudentCompetencyReport {
+  schemaVersion: "1.0";
+  classroomId: string;
+  reportScope?: StudentReportScope;
+  studentUserId?: string;
+  classroomTitle: string;
+  studentLabel: string;
+  generatedAt: string;
+  analysisStatus: CompetencyAnalysisStatus;
+  generationMode: CompetencyGenerationMode;
+  headline: string;
+  summaryMarkdown: string;
+  overallScore: number;
+  overallLevel: CompetencyOverallLevel;
+  competencies: StudentCompetencyScore[];
+  strengths: string[];
+  growthAreas: string[];
+  coachingInsights: string[];
+  recommendedActions: StudentActionRecommendation[];
+  lectureInsights: StudentLectureInsight[];
+  sourceStats: StudentReportSourceStats;
+  dataQualityNote: string;
+}
+
+export interface StudentReportSummary {
+  generatedAt: string;
+  overallScore: number;
+  overallLevel: CompetencyOverallLevel;
+  generationMode: CompetencyGenerationMode;
+  analysisStatus: CompetencyAnalysisStatus;
+  sourceStats: StudentReportSourceStats;
+}
+
+export interface StudentReportListItem extends ClassroomStudent {
+  reportSummary: StudentReportSummary | null;
 }
 
 export interface LectureItem {
@@ -129,4 +260,5 @@ export interface Week {
 export interface Classroom {
   id: string;
   title: string;
+  teacherId?: string;
 }

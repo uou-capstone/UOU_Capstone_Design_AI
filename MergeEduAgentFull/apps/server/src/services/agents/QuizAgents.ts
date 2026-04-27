@@ -143,7 +143,8 @@ export class QuizAgents {
       learnerMemoryDigest: string;
       targetDifficulty: "FOUNDATIONAL" | "BALANCED" | "CHALLENGING";
     },
-    onDelta?: (delta: { channel: "thought" | "answer"; text: string }) => void
+    onDelta?: (delta: { channel: "thought" | "answer"; text: string }) => void,
+    signal?: AbortSignal
   ): Promise<{ quiz: QuizJson; thoughtSummary: string }> {
     const response = await this.bridge.generateQuizStream(
       {
@@ -159,7 +160,8 @@ export class QuizAgents {
         learnerMemoryDigest: input.learnerMemoryDigest,
         targetDifficulty: input.targetDifficulty
       },
-      onDelta
+      onDelta,
+      signal
     );
 
     const parsed = parseQuizJson(response.quiz);

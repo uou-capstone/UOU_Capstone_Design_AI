@@ -149,4 +149,5 @@ npm install
 
 echo "[run.sh] Web: http://localhost:${WEB_PORT}"
 echo "[run.sh] Server: http://localhost:${PORT}"
+echo "[run.sh] AI Bridge: http://localhost:${AI_BRIDGE_PORT}"
 npm run dev

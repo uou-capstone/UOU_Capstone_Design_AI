@@ -4,8 +4,41 @@ import pdf from "pdf-parse";
 import { appConfig } from "../../config.js";
 import { PdfPageIndex } from "./PdfTextIndex.js";
 
+export function buildBoundedCumulativeContext(
+  index: PdfPageIndex,
+  uptoPage: number,
+  maxChars: number
+): string {
+  const budget = Math.max(0, maxChars);
+  if (budget === 0) return "";
+
+  let merged = "";
+  for (const page of index.pages) {
+    if (page.page < 1 || page.page > uptoPage) continue;
+    const chunk = `[p.${page.page}] ${page.text}`;
+    const next = merged ? `${merged}\n\n${chunk}` : chunk;
+    if (next.length >= budget) {
+      return next.slice(0, budget);
+    }
+    merged = next;
+  }
+  return merged;
+}
+
 export class PdfIngestService {
   private readonly indexCache = new Map<string, PdfPageIndex>();
+
+  constructor(private readonly uploadDir = appConfig.uploadDir) {}
+
+  private resolveUploadPath(fileName: string): string {
+    const uploadRoot = path.resolve(this.uploadDir);
+    const resolved = path.resolve(uploadRoot, fileName);
+    const relative = path.relative(uploadRoot, resolved);
+    if (!relative || relative.startsWith("..") || path.isAbsolute(relative)) {
+      throw new Error("Invalid upload path");
+    }
+    return resolved;
+  }
 
   private async loadPageIndex(indexPath: string): Promise<PdfPageIndex> {
     const cached = this.indexCache.get(indexPath);
@@ -25,7 +58,8 @@ export class PdfIngestService {
   }
 
   async savePdf(lectureId: string, buffer: Buffer): Promise<string> {
-    const fullPath = path.join(appConfig.uploadDir, `${lectureId}.pdf`);
+    await fs.mkdir(this.uploadDir, { recursive: true });
+    const fullPath = this.resolveUploadPath(`${lectureId}.pdf`);
     await fs.writeFile(fullPath, buffer);
     return fullPath;
   }
@@ -57,7 +91,8 @@ export class PdfIngestService {
       createdAt: new Date().toISOString()
     };
 
-    const indexPath = path.join(appConfig.uploadDir, `${lectureId}.pageIndex.json`);
+    await fs.mkdir(this.uploadDir, { recursive: true });
+    const indexPath = this.resolveUploadPath(`${lectureId}.pageIndex.json`);
     await fs.writeFile(indexPath, `${JSON.stringify(pageIndex, null, 2)}\n`, "utf-8");
     this.indexCache.set(indexPath, pageIndex);
 
@@ -86,10 +121,10 @@ export class PdfIngestService {
 
   async readCumulativeContext(indexPath: string, uptoPage: number): Promise<string> {
     const index = await this.loadPageIndex(indexPath);
-    const chunks = index.pages
-      .filter((page) => page.page >= 1 && page.page <= uptoPage)
-      .map((page) => `[p.${page.page}] ${page.text}`);
-    const merged = chunks.join("\n\n");
-    return merged.slice(0, appConfig.contextMaxChars * 3);
+    return buildBoundedCumulativeContext(
+      index,
+      uptoPage,
+      appConfig.contextMaxChars * 3
+    );
   }
 }

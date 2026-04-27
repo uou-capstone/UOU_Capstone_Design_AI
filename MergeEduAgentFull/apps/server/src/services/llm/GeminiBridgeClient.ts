@@ -109,13 +109,23 @@ export class GeminiBridgeClient {
     path: string,
     input: Record<string, unknown>,
     onDelta?: (delta: { channel: StreamChannel; text: string }) => void,
-    timeoutMs?: number
+    timeoutMs?: number,
+    signal?: AbortSignal
   ): Promise<{ content: BridgeContent | null; answerText: string; thoughtSummary: string; data?: TData }> {
     let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
+    let abortListener: (() => void) | undefined;
     try {
       const controller = new AbortController();
       if (timeoutMs && timeoutMs > 0) {
         timeoutHandle = setTimeout(() => controller.abort(), timeoutMs);
+      }
+      if (signal) {
+        if (signal.aborted) {
+          controller.abort();
+        } else {
+          abortListener = () => controller.abort();
+          signal.addEventListener("abort", abortListener, { once: true });
+        }
       }
       const response = await fetch(new URL(path, appConfig.aiBridgeUrl), {
         method: "POST",
@@ -212,6 +222,9 @@ export class GeminiBridgeClient {
       if (timeoutHandle) {
         clearTimeout(timeoutHandle);
       }
+      if (signal && abortListener) {
+        signal.removeEventListener("abort", abortListener);
+      }
     }
   }
 
@@ -271,9 +284,10 @@ export class GeminiBridgeClient {
       learnerLevel?: string;
       learnerMemoryDigest?: string;
     },
-    onDelta?: (delta: { channel: StreamChannel; text: string }) => void
+    onDelta?: (delta: { channel: StreamChannel; text: string }) => void,
+    signal?: AbortSignal
   ): Promise<{ markdown: string; thoughtSummary: string; content: BridgeContent | null }> {
-    const streamed = await this.streamBridge("explain_page_stream", "/bridge/explain_page_stream", input, onDelta);
+    const streamed = await this.streamBridge("explain_page_stream", "/bridge/explain_page_stream", input, onDelta, undefined, signal);
     return {
       markdown: streamed.answerText || contentToMarkdown(streamed.content),
       thoughtSummary: streamed.thoughtSummary,
@@ -290,6 +304,7 @@ export class GeminiBridgeClient {
     pageText: string;
     neighborText: { prev: string; next: string };
     learnerMemoryDigest?: string;
+    qaThreadDigest?: string;
   }): Promise<{ markdown: string; thoughtSummary: string; content: BridgeContent | null }> {
     try {
       const response = await this.http.post<BridgeResponse>("/bridge/answer_question", input);
@@ -313,10 +328,12 @@ export class GeminiBridgeClient {
       pageText: string;
       neighborText: { prev: string; next: string };
       learnerMemoryDigest?: string;
+      qaThreadDigest?: string;
     },
-    onDelta?: (delta: { channel: StreamChannel; text: string }) => void
+    onDelta?: (delta: { channel: StreamChannel; text: string }) => void,
+    signal?: AbortSignal
   ): Promise<{ markdown: string; thoughtSummary: string; content: BridgeContent | null }> {
-    const streamed = await this.streamBridge("answer_question_stream", "/bridge/answer_question_stream", input, onDelta);
+    const streamed = await this.streamBridge("answer_question_stream", "/bridge/answer_question_stream", input, onDelta, undefined, signal);
     return {
       markdown: streamed.answerText || contentToMarkdown(streamed.content),
       thoughtSummary: streamed.thoughtSummary,
@@ -362,9 +379,10 @@ export class GeminiBridgeClient {
       learnerMemoryDigest?: string;
       targetDifficulty?: string;
     },
-    onDelta?: (delta: { channel: StreamChannel; text: string }) => void
+    onDelta?: (delta: { channel: StreamChannel; text: string }) => void,
+    signal?: AbortSignal
   ): Promise<{ quiz: QuizJson; thoughtSummary: string }> {
-    const streamed = await this.streamBridge<QuizJson>("generate_quiz_stream", "/bridge/generate_quiz_stream", input, onDelta);
+    const streamed = await this.streamBridge<QuizJson>("generate_quiz_stream", "/bridge/generate_quiz_stream", input, onDelta, undefined, signal);
     if (!streamed.data) {
       this.throwClientError("generate_quiz_stream", 502, "AI bridge failed to generate quiz JSON", "bridge");
     }
@@ -402,9 +420,10 @@ export class GeminiBridgeClient {
       answers: Record<string, unknown>;
       learnerMemoryDigest?: string;
     },
-    onDelta?: (delta: { channel: StreamChannel; text: string }) => void
+    onDelta?: (delta: { channel: StreamChannel; text: string }) => void,
+    signal?: AbortSignal
   ): Promise<{ grading: GradingResult; thoughtSummary: string }> {
-    const streamed = await this.streamBridge<GradingResult>("grade_quiz_stream", "/bridge/grade_quiz_stream", input, onDelta);
+    const streamed = await this.streamBridge<GradingResult>("grade_quiz_stream", "/bridge/grade_quiz_stream", input, onDelta, undefined, signal);
     if (!streamed.data) {
       this.throwClientError("grade_quiz_stream", 502, "AI bridge failed to grade quiz", "bridge");
     }
@@ -441,15 +460,18 @@ export class GeminiBridgeClient {
       fileRef: NonNullable<LectureItem["pdf"]["geminiFile"]>;
       prompt: string;
       responseJsonSchema: Record<string, unknown>;
+      signal?: AbortSignal;
     },
     onDelta?: (delta: { channel: StreamChannel; text: string }) => void
   ): Promise<{ plan: unknown; thoughtSummary: string }> {
+    const { signal, ...payload } = input;
     const streamed = await this.streamBridge(
       "orchestrate_session_stream",
       "/bridge/orchestrate_session_stream",
-      input,
+      payload,
       onDelta,
-      appConfig.orchestratorThinkTimeoutMs
+      appConfig.orchestratorThinkTimeoutMs,
+      signal
     );
     let parsed: unknown = streamed.data;
     if (parsed === undefined) {
@@ -457,6 +479,58 @@ export class GeminiBridgeClient {
     }
     return {
       plan: parsed,
+      thoughtSummary: streamed.thoughtSummary
+    };
+  }
+
+  async analyzeStudentCompetencyReport(input: {
+    model: string;
+    prompt: string;
+    responseJsonSchema: Record<string, unknown>;
+  }): Promise<{ report: unknown; thoughtSummary: string }> {
+    try {
+      const response = await this.http.post<BridgeResponse<unknown>>(
+        "/bridge/analyze_student_report",
+        input
+      );
+      const report = response.data.data;
+      if (report === undefined) {
+        this.throwClientError(
+          "analyze_student_report",
+          502,
+          "AI bridge failed to build student report JSON",
+          "bridge"
+        );
+      }
+      return {
+        report,
+        thoughtSummary: String(response.data.thoughtSummary ?? "")
+      };
+    } catch (error) {
+      this.rethrowBridgeError("analyze_student_report", error);
+    }
+  }
+
+  async analyzeStudentCompetencyReportStream(
+    input: {
+      model: string;
+      prompt: string;
+      responseJsonSchema: Record<string, unknown>;
+    },
+    onDelta?: (delta: { channel: StreamChannel; text: string }) => void
+  ): Promise<{ report: unknown; thoughtSummary: string }> {
+    const streamed = await this.streamBridge(
+      "analyze_student_report_stream",
+      "/bridge/analyze_student_report_stream",
+      input,
+      onDelta
+    );
+    let parsed: unknown = streamed.data;
+    if (parsed === undefined) {
+      parsed = JSON.parse(streamed.answerText);
+    }
+    return {
+      report: parsed,
       thoughtSummary: streamed.thoughtSummary
     };
   }

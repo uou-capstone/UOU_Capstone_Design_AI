@@ -1,9 +1,28 @@
 import { describe, expect, it } from "vitest";
 import { Orchestrator } from "../services/agents/Orchestrator.js";
 import { createInitialIntegratedMemory } from "../services/engine/LearnerMemoryService.js";
+import { createInitialQaThreadMemory } from "../services/engine/QaThreadService.js";
 import { AppEvent, SessionState } from "../types/domain.js";
 
-function makeSession(currentPage = 1): SessionState {
+function makeSession(
+  currentPage = 1,
+  options?: {
+    qaTurns?: Array<{ question: string; answerMarkdown: string }>;
+    activeIntervention?: SessionState["activeIntervention"];
+    quizzes?: SessionState["quizzes"];
+  }
+): SessionState {
+  const qaThread = createInitialQaThreadMemory();
+  if (options?.qaTurns?.length) {
+    qaThread.page = currentPage;
+    qaThread.turns = options.qaTurns.map((turn) => ({
+      page: currentPage,
+      question: turn.question,
+      answerMarkdown: turn.answerMarkdown,
+      createdAt: new Date().toISOString()
+    }));
+  }
+
   return {
     schemaVersion: "1.0",
     sessionId: "ses_1",
@@ -11,7 +30,7 @@ function makeSession(currentPage = 1): SessionState {
     currentPage,
     pageStates: [{ page: currentPage, status: "EXPLAINING", lastTouchedAt: new Date().toISOString() }],
     messages: [],
-    quizzes: [],
+    quizzes: options?.quizzes ?? [],
     feedback: [],
     learnerModel: {
       level: "INTERMEDIATE",
@@ -20,17 +39,28 @@ function makeSession(currentPage = 1): SessionState {
       strongConcepts: []
     },
     integratedMemory: createInitialIntegratedMemory(),
+    activeIntervention: options?.activeIntervention ?? null,
+    qaThread,
     conversationSummary: "",
     updatedAt: new Date().toISOString()
   };
 }
 
-function run(event: AppEvent, currentPage: number, lectureNumPages: number) {
+function run(
+  event: AppEvent,
+  currentPage: number,
+  lectureNumPages: number,
+  options?: {
+    qaTurns?: Array<{ question: string; answerMarkdown: string }>;
+    activeIntervention?: SessionState["activeIntervention"];
+    quizzes?: SessionState["quizzes"];
+  }
+) {
   const orchestrator = new Orchestrator();
   return orchestrator.run({
     schemaVersion: "1.0",
     event,
-    session: makeSession(currentPage),
+    session: makeSession(currentPage, options),
     lectureNumPages,
     pageText: "핵심 정의 정리 공식",
     neighborText: { prev: "", next: "" },
@@ -155,5 +185,248 @@ describe("Orchestrator flow", () => {
 
     expect(plan.actions.some((action) => action.type === "CALL_TOOL" && action.tool === "ANSWER_QUESTION")).toBe(true);
     expect(plan.actions.some((action) => action.type === "CALL_TOOL" && action.tool === "EXPLAIN_PAGE")).toBe(false);
+  });
+
+  it("does not treat a meta next-page mention as navigation", () => {
+    const plan = run(
+      {
+        type: "USER_MESSAGE",
+        payload: {
+          text: "현재 페이지를 아주 자세히 설명해줘. 답변 중 내가 다음 페이지를 누를 수도 있어."
+        }
+      },
+      5,
+      10
+    );
+
+    expect(plan.actions.some((action) => action.type === "CALL_TOOL" && action.tool === "SET_CURRENT_PAGE")).toBe(false);
+    expect(plan.actions).toContainEqual(
+      expect.objectContaining({
+        type: "CALL_TOOL",
+        tool: "ANSWER_QUESTION",
+        args: expect.objectContaining({
+          page: 5
+        })
+      })
+    );
+  });
+
+  it("keeps direct page commands on the already-reduced current page", () => {
+    const plan = run(
+      {
+        type: "USER_MESSAGE",
+        payload: { text: "다음 페이지로 넘어가 주세요" }
+      },
+      3,
+      10
+    );
+
+    expect(plan.actions.some((action) => action.type === "CALL_TOOL" && action.tool === "SET_CURRENT_PAGE")).toBe(false);
+    expect(plan.actions).toContainEqual(
+      expect.objectContaining({
+        type: "CALL_TOOL",
+        tool: "EXPLAIN_PAGE",
+        args: expect.objectContaining({
+          page: 3
+        })
+      })
+    );
+  });
+
+  it("marks first free-form question as START_NEW QA thread", () => {
+    const plan = run(
+      {
+        type: "USER_MESSAGE",
+        payload: { text: "이 부분이 왜 이렇게 되는지 모르겠어요." }
+      },
+      2,
+      10
+    );
+
+    expect(plan.actions).toContainEqual(
+      expect.objectContaining({
+        type: "CALL_TOOL",
+        tool: "ANSWER_QUESTION",
+        args: expect.objectContaining({
+          threadMode: "START_NEW"
+        })
+      })
+    );
+  });
+
+  it("marks follow-up free-form question as FOLLOW_UP when QA thread exists", () => {
+    const plan = run(
+      {
+        type: "USER_MESSAGE",
+        payload: { text: "그럼 그 식이 왜 바뀌는 거예요?" }
+      },
+      2,
+      10,
+      {
+        qaTurns: [
+          {
+            question: "이 개념이 왜 필요한가요?",
+            answerMarkdown: "먼저 전체 흐름을 보면..."
+          }
+        ]
+      }
+    );
+
+    expect(plan.actions).toContainEqual(
+      expect.objectContaining({
+        type: "CALL_TOOL",
+        tool: "ANSWER_QUESTION",
+        args: expect.objectContaining({
+          threadMode: "FOLLOW_UP"
+        })
+      })
+    );
+  });
+
+  it("routes diagnostic reply to repair tool when intervention is active", () => {
+    const plan = run(
+      {
+        type: "USER_MESSAGE",
+        payload: { text: "공식은 기억나는데 적용 이유가 헷갈렸어요." }
+      },
+      2,
+      10,
+      {
+        activeIntervention: {
+          mode: "QUIZ_REPAIR",
+          page: 2,
+          quizId: "quiz_1",
+          scoreRatio: 0.2,
+          wrongQuestionIds: ["q1"],
+          focusConcepts: ["분수 나눗셈"],
+          suspectedMisconceptions: ["분수 나눗셈 적용 이유를 혼동함"],
+          diagnosticPrompt: "어디가 헷갈렸는지 말해 주세요.",
+          stage: "AWAITING_DIAGNOSIS_REPLY",
+          createdAt: new Date().toISOString(),
+          lastUpdatedAt: new Date().toISOString()
+        }
+      }
+    );
+
+    expect(plan.actions).toContainEqual(
+      expect.objectContaining({
+        type: "CALL_TOOL",
+        tool: "REPAIR_MISCONCEPTION",
+        args: expect.objectContaining({
+          studentReply: "공식은 기억나는데 적용 이유가 헷갈렸어요."
+        })
+      })
+    );
+  });
+
+  it("uses stored quiz type when choosing grading tool", () => {
+    const plan = run(
+      {
+        type: "QUIZ_SUBMITTED",
+        payload: {
+          quizId: "quiz_short",
+          answers: { q1: "핵심 내용을 요약했습니다." }
+        }
+      },
+      2,
+      10,
+      {
+        quizzes: [
+          {
+            id: "quiz_short",
+            quizType: "SHORT",
+            createdFromPage: 2,
+            createdAt: new Date().toISOString(),
+            quizJson: {
+              schemaVersion: "1.0",
+              quizId: "quiz_short",
+              quizType: "SHORT",
+              page: 2,
+              questions: [
+                {
+                  id: "q1",
+                  promptMarkdown: "요약하세요.",
+                  referenceAnswer: { text: "핵심 정의" }
+                }
+              ]
+            }
+          }
+        ]
+      }
+    );
+
+    expect(plan.actions[0]).toMatchObject({
+      type: "CALL_TOOL",
+      tool: "GRADE_SHORT_OR_ESSAY",
+      args: {
+        quizId: "quiz_short"
+      }
+    });
+  });
+
+  it("uses the latest type-matched quiz when duplicate ids exist", () => {
+    const plan = run(
+      {
+        type: "QUIZ_SUBMITTED",
+        payload: {
+          quizId: "quiz_duplicate",
+          quizType: "SHORT",
+          answers: { q1: "핵심 내용을 요약했습니다." }
+        }
+      },
+      4,
+      10,
+      {
+        quizzes: [
+          {
+            id: "quiz_duplicate",
+            quizType: "MCQ",
+            createdFromPage: 1,
+            createdAt: new Date().toISOString(),
+            quizJson: {
+              schemaVersion: "1.0",
+              quizId: "quiz_duplicate",
+              quizType: "MCQ",
+              page: 1,
+              questions: [
+                {
+                  id: "q_old",
+                  promptMarkdown: "예전 객관식",
+                  choices: [{ id: "c1", textMarkdown: "정답" }],
+                  answer: { choiceId: "c1" }
+                }
+              ]
+            }
+          },
+          {
+            id: "quiz_duplicate",
+            quizType: "SHORT",
+            createdFromPage: 4,
+            createdAt: new Date().toISOString(),
+            quizJson: {
+              schemaVersion: "1.0",
+              quizId: "quiz_duplicate",
+              quizType: "SHORT",
+              page: 4,
+              questions: [
+                {
+                  id: "q1",
+                  promptMarkdown: "요약하세요.",
+                  referenceAnswer: { text: "핵심 정의" }
+                }
+              ]
+            }
+          }
+        ]
+      }
+    );
+
+    expect(plan.actions[0]).toMatchObject({
+      type: "CALL_TOOL",
+      tool: "GRADE_SHORT_OR_ESSAY",
+      args: {
+        quizId: "quiz_duplicate"
+      }
+    });
   });
 });

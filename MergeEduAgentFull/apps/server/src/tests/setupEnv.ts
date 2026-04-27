@@ -1,0 +1,11 @@
+process.env.PORT ??= "4000";
+process.env.WEB_PORT ??= "5173";
+process.env.APP_ORIGIN ??= "http://localhost:5173";
+process.env.MODEL_NAME ??= "gemini-1.5-pro";
+process.env.GOOGLE_API_KEY ??= "test-key";
+process.env.PASS_SCORE_RATIO ??= "0.7";
+process.env.CONTEXT_MAX_CHARS ??= "12000";
+process.env.RECENT_MESSAGES_N ??= "12";
+process.env.AI_BRIDGE_URL ??= "http://127.0.0.1:8001";
+process.env.DATA_DIR ??= "./apps/server/data-test";
+process.env.UPLOAD_DIR ??= "./apps/server/uploads-test";

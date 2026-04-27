@@ -14,7 +14,7 @@ export function BinaryChoice({ onDecision }: Props) {
   };
 
   return (
-    <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+    <div className="widget-actions">
       <button className="btn" onClick={() => decide(true)} disabled={locked}>
         예
       </button>

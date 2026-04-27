@@ -2,6 +2,80 @@ export type IsoString = string;
 
 export const SCHEMA_VERSION = "1.0" as const;
 
+export type UserRole = "teacher" | "student";
+
+export interface User {
+  id: string;
+  email: string;
+  emailNormalized: string;
+  displayName: string;
+  role: UserRole;
+  inviteCode: string;
+  passwordHash?: string;
+  passwordSalt?: string;
+  emailVerifiedAt?: IsoString;
+  emailVerificationCodeHash?: string;
+  emailVerificationExpiresAt?: IsoString;
+  emailVerificationAttempts?: number;
+  emailVerificationSentAt?: IsoString;
+  googleSub?: string;
+  createdAt: IsoString;
+  updatedAt: IsoString;
+}
+
+export interface PublicUser {
+  id: string;
+  email: string;
+  displayName: string;
+  role: UserRole;
+  inviteCode: string;
+  emailVerified: boolean;
+}
+
+export interface AuthSession {
+  id: string;
+  userId: string;
+  tokenHash: string;
+  createdAt: IsoString;
+  expiresAt: IsoString;
+  revokedAt?: IsoString;
+  userAgent?: string;
+}
+
+export interface ClassroomEnrollment {
+  id: string;
+  classroomId: string;
+  studentUserId: string;
+  invitedByTeacherId: string;
+  createdAt: IsoString;
+}
+
+export interface InviteAuditLogEntry {
+  id: string;
+  classroomId: string;
+  teacherId: string;
+  studentUserId?: string;
+  action: "SEARCH" | "ENROLL" | "REMOVE";
+  result: "SUCCESS" | "NOT_FOUND" | "FORBIDDEN" | "DUPLICATE";
+  createdAt: IsoString;
+}
+
+export interface OAuthState {
+  id: string;
+  stateHash: string;
+  role: UserRole;
+  codeVerifier?: string;
+  nonceHash?: string;
+  createdAt: IsoString;
+  expiresAt: IsoString;
+}
+
+export interface RateLimitBucket {
+  key: string;
+  count: number;
+  resetAt: IsoString;
+}
+
 export type AgentName =
   | "ORCHESTRATOR"
   | "EXPLAINER"
@@ -16,6 +90,7 @@ export type QuizDifficultyTarget = "FOUNDATIONAL" | "BALANCED" | "CHALLENGING";
 export interface Classroom {
   id: string;
   title: string;
+  teacherId?: string;
   createdAt: IsoString;
   updatedAt: IsoString;
 }
@@ -207,10 +282,164 @@ export interface LearnerMemoryWrite {
   learnerLevel?: LearnerLevel;
 }
 
+export type QuizAssessmentSource = "DETERMINISTIC_V1";
+export type QuizAssessmentDeliveryStatus = "PENDING" | "CONSUMED";
+export type QuizAssessmentReadiness =
+  | "READY_TO_ADVANCE"
+  | "REINFORCE_BEFORE_ADVANCE"
+  | "REPAIR_REQUIRED";
+
+export interface AssessmentMemoryHint {
+  strengths: string[];
+  weaknesses: string[];
+  misconceptions: string[];
+  explanationPreferences: string[];
+  preferredQuizTypes: QuizType[];
+  targetDifficulty?: QuizDifficultyTarget;
+  nextCoachingGoals: string[];
+}
+
+export interface QuizAssessmentRecord {
+  id: string;
+  quizId: string;
+  page: number;
+  quizType: QuizType;
+  version: "1.0";
+  source: QuizAssessmentSource;
+  createdAt: IsoString;
+  updatedAt: IsoString;
+  scoreRatio: number;
+  readiness: QuizAssessmentReadiness;
+  deliveryStatus: QuizAssessmentDeliveryStatus;
+  consumedAt?: IsoString;
+  strengths: string[];
+  weaknesses: string[];
+  misconceptions: string[];
+  behaviorSignals: string[];
+  memoryHint: AssessmentMemoryHint;
+  summaryMarkdown: string;
+  evidence: string[];
+}
+
+export type InterventionStage = "AWAITING_DIAGNOSIS_REPLY" | "REPAIR_DELIVERED";
+
+export interface ActiveIntervention {
+  mode: "QUIZ_REPAIR";
+  page: number;
+  quizId: string;
+  scoreRatio: number;
+  wrongQuestionIds: string[];
+  focusConcepts: string[];
+  suspectedMisconceptions: string[];
+  diagnosticPrompt: string;
+  stage: InterventionStage;
+  createdAt: IsoString;
+  lastUpdatedAt: IsoString;
+}
+
+export type QaThreadMode = "START_NEW" | "FOLLOW_UP";
+
+export interface QaThreadTurn {
+  page: number;
+  question: string;
+  answerMarkdown: string;
+  createdAt: IsoString;
+}
+
+export interface QaThreadMemory {
+  page: number | null;
+  turns: QaThreadTurn[];
+  lastUpdatedAt: IsoString;
+}
+
+export type CompetencyTrend = "UP" | "STEADY" | "DOWN";
+export type CompetencyOverallLevel =
+  | "EMERGING"
+  | "DEVELOPING"
+  | "PROFICIENT"
+  | "ADVANCED";
+export type CompetencyAnalysisStatus = "READY" | "SPARSE_DATA";
+export type CompetencyGenerationMode = "AI_ANALYZED" | "HEURISTIC_FALLBACK";
+export type StudentCompetencyKey =
+  | "CONCEPT_UNDERSTANDING"
+  | "QUESTION_QUALITY"
+  | "PROBLEM_SOLVING"
+  | "APPLICATION_TRANSFER"
+  | "QUIZ_ACCURACY"
+  | "LEARNING_PERSISTENCE"
+  | "SELF_REFLECTION"
+  | "CLASS_PARTICIPATION"
+  | "CONFIDENCE_GROWTH"
+  | "IMPROVEMENT_MOMENTUM";
+
+export interface StudentCompetencyScore {
+  key: StudentCompetencyKey;
+  label: string;
+  score: number;
+  trend: CompetencyTrend;
+  summary: string;
+  evidence: string[];
+}
+
+export interface StudentActionRecommendation {
+  title: string;
+  description: string;
+}
+
+export interface StudentLectureInsight {
+  lectureId: string;
+  lectureTitle: string;
+  weekTitle: string;
+  questionCount: number;
+  quizCount: number;
+  averageQuizScore: number;
+  masteryLabel: string;
+}
+
+export interface StudentReportSourceStats {
+  lectureCount: number;
+  sessionCount: number;
+  completedPageCount: number;
+  pageCoverageRatio: number;
+  progressPageCount?: number;
+  progressCoverageRatio?: number;
+  questionCount: number;
+  quizCount: number;
+  gradedQuizCount: number;
+  averageQuizScore: number;
+  feedbackCount: number;
+  memoryRefreshCount: number;
+}
+
+export interface StudentCompetencyReport {
+  schemaVersion: "1.0";
+  classroomId: string;
+  reportScope?: "CLASSROOM_AGGREGATE" | "STUDENT";
+  studentUserId?: string;
+  classroomTitle: string;
+  studentLabel: string;
+  generatedAt: IsoString;
+  analysisStatus: CompetencyAnalysisStatus;
+  generationMode: CompetencyGenerationMode;
+  headline: string;
+  summaryMarkdown: string;
+  overallScore: number;
+  overallLevel: CompetencyOverallLevel;
+  competencies: StudentCompetencyScore[];
+  strengths: string[];
+  growthAreas: string[];
+  coachingInsights: string[];
+  recommendedActions: StudentActionRecommendation[];
+  lectureInsights: StudentLectureInsight[];
+  sourceStats: StudentReportSourceStats;
+  dataQualityNote: string;
+}
+
 export interface SessionState {
   schemaVersion: "1.0";
   sessionId: string;
   lectureId: string;
+  ownerUserId?: string;
   currentPage: number;
   pageStates: PageState[];
   messages: ChatMessage[];
@@ -218,6 +447,9 @@ export interface SessionState {
   feedback: FeedbackEntry[];
   learnerModel: LearnerModel;
   integratedMemory: IntegratedLearnerMemory;
+  quizAssessments?: QuizAssessmentRecord[];
+  activeIntervention?: ActiveIntervention | null;
+  qaThread?: QaThreadMemory;
   conversationSummary: string;
   updatedAt: IsoString;
 }
@@ -252,6 +484,7 @@ export interface EventApiResponse {
     openQuizModal: boolean;
     quiz: QuizJson | null;
     disableQuizClose: boolean;
+    passScoreRatio: number;
     widgets?: Widget[];
   };
   patch: {
@@ -259,5 +492,7 @@ export interface EventApiResponse {
     progressText: string;
     pageState?: PageState;
     learnerModel: LearnerModel;
+    activeIntervention?: ActiveIntervention | null;
+    quizRecord?: QuizRecord | null;
   };
 }

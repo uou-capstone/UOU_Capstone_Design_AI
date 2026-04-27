@@ -27,7 +27,8 @@ export class ExplainerAgent {
       learnerLevel: string;
       learnerMemoryDigest: string;
     },
-    onDelta?: (delta: { channel: "thought" | "answer"; text: string }) => void
+    onDelta?: (delta: { channel: "thought" | "answer"; text: string }) => void,
+    signal?: AbortSignal
   ): Promise<{ markdown: string; thoughtSummary: string }> {
     const response = await this.bridge.explainPageStream(
       {
@@ -40,7 +41,8 @@ export class ExplainerAgent {
         learnerLevel: input.learnerLevel,
         learnerMemoryDigest: input.learnerMemoryDigest
       },
-      onDelta
+      onDelta,
+      signal
     );
     return {
       markdown: response.markdown || `${input.page}페이지 핵심을 정리했습니다.`,

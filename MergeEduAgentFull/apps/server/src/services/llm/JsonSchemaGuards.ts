@@ -1,5 +1,10 @@
 import { z } from "zod";
-import { gradingSchema, orchestratorPlanSchema, quizSchema } from "../../types/guards.js";
+import {
+  gradingSchema,
+  orchestratorPlanSchema,
+  quizSchema,
+  studentCompetencyReportSchema
+} from "../../types/guards.js";
 
 export function parseOrchestratorPlan(input: unknown) {
   return orchestratorPlanSchema.parse(input);
@@ -11,6 +16,10 @@ export function parseQuizJson(input: unknown) {
 
 export function parseGrading(input: unknown) {
   return gradingSchema.parse(input);
+}
+
+export function parseStudentCompetencyReport(input: unknown) {
+  return studentCompetencyReportSchema.parse(input);
 }
 
 export function safeParse<T>(schema: z.ZodType<T>, input: unknown): T | null {

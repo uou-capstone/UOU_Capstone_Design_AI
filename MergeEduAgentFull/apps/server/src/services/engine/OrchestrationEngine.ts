@@ -1,8 +1,11 @@
 import { appConfig } from "../../config.js";
 import {
+  AppEvent,
   EventApiRequest,
   EventApiResponse,
   LectureItem,
+  QuizRecord,
+  QuizType,
   SessionState
 } from "../../types/domain.js";
 import { parseOrchestratorPlan } from "../llm/JsonSchemaGuards.js";
@@ -10,14 +13,135 @@ import { Orchestrator } from "../agents/Orchestrator.js";
 import { JsonStore } from "../storage/JsonStore.js";
 import { GeminiBridgeClient } from "../llm/GeminiBridgeClient.js";
 import { PdfIngestService } from "../pdf/PdfIngestService.js";
+import { getPageCommandIntent } from "./PageCommandIntent.js";
 import { SummaryService } from "./SummaryService.js";
 import { StateReducer } from "./StateReducer.js";
 import {
   applyLearnerMemoryWrite,
   buildPageHistoryDigest
 } from "./LearnerMemoryService.js";
+import {
+  markAssessmentsConsumed,
+  preparePendingAssessmentHandoff
+} from "./QuizAssessmentService.js";
 import { StreamProgressEvent, ToolDispatcher } from "./ToolDispatcher.js";
 import { ensurePageState, progressText } from "./utils.js";
+
+type ParsedOrchestratorPlan = ReturnType<typeof parseOrchestratorPlan>;
+const GENERIC_STREAM_ERROR_MESSAGE =
+  "세션 처리 중 문제가 발생했습니다. 잠시 후 다시 시도해 주세요.";
+
+function getSafePassScoreRatio(value: unknown = appConfig.passScoreRatio): number {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0 && value <= 1
+    ? value
+    : 0.7;
+}
+
+class SupersededPageChangeError extends Error {
+  constructor() {
+    super("Superseded page navigation event");
+  }
+}
+
+/**
+ * Ver3 Phase 1: pedagogy policy single choke point.
+ *
+ * Called exactly once in processEvent(), right after planWithLlm() returns.
+ * Guarantees plan.pedagogyPolicy is always defined before dispatch, covering
+ * both the LLM-success path and the deterministic fallback path with a single
+ * safety net. ToolDispatcher's R1 rule provides a second defensive layer.
+ */
+function normalizePlan(plan: ParsedOrchestratorPlan): ParsedOrchestratorPlan {
+  if (plan.pedagogyPolicy) return plan;
+  return {
+    ...plan,
+    pedagogyPolicy: {
+      mode: "ADVANCE",
+      reason: "normalized: policy missing from upstream plan",
+      allowDirectAnswer: true,
+      hintDepth: "LOW",
+      interventionBudget: 1
+    }
+  };
+}
+
+function findLatestQuizRecord(
+  state: SessionState,
+  quizId: string,
+  quizType?: QuizType | string
+): QuizRecord | undefined {
+  for (let index = state.quizzes.length - 1; index >= 0; index -= 1) {
+    const quiz = state.quizzes[index];
+    if (quiz?.id !== quizId) continue;
+    if (quizType && quiz.quizType !== quizType) continue;
+    return quiz;
+  }
+  return undefined;
+}
+
+const PAGE_SCOPED_TOOLS = new Set([
+  "SET_CURRENT_PAGE",
+  "EXPLAIN_PAGE",
+  "ANSWER_QUESTION",
+  "GENERATE_QUIZ_MCQ",
+  "GENERATE_QUIZ_OX",
+  "GENERATE_QUIZ_SHORT",
+  "GENERATE_QUIZ_ESSAY"
+]);
+
+export function sanitizePlanForUserPageIntent(
+  plan: ParsedOrchestratorPlan,
+  event: AppEvent,
+  currentPage: number
+): ParsedOrchestratorPlan {
+  if (event.type !== "USER_MESSAGE") {
+    return plan;
+  }
+
+  const text = String(event.payload?.text ?? "");
+  const pageIntent = getPageCommandIntent(text);
+  let changed = false;
+  const actions: ParsedOrchestratorPlan["actions"] = [];
+
+  for (const action of plan.actions) {
+    if (action.type !== "CALL_TOOL" || !PAGE_SCOPED_TOOLS.has(action.tool)) {
+      actions.push(action);
+      continue;
+    }
+
+    if (!pageIntent && action.tool === "SET_CURRENT_PAGE") {
+      changed = true;
+      continue;
+    }
+
+    const args = action.args as Record<string, unknown>;
+    const page = Number(args.page);
+    if (Number.isFinite(page) && Math.floor(page) !== currentPage) {
+      changed = true;
+      actions.push(
+        {
+          ...action,
+          args: {
+            ...action.args,
+            page: currentPage
+          }
+        } as ParsedOrchestratorPlan["actions"][number]
+      );
+      continue;
+    }
+
+    actions.push(action);
+  }
+
+  if (!changed) {
+    return plan;
+  }
+
+  return {
+    ...plan,
+    actions
+  };
+}
 
 export type EventStreamChunk =
   | {
@@ -35,6 +159,9 @@ export type EventStreamChunk =
     };
 
 export class OrchestrationEngine {
+  private latestPageChangeRunBySession = new Map<string, number>();
+  private nextPageChangeRunId = 0;
+
   constructor(
     private readonly store: JsonStore,
     private readonly reducer: StateReducer,
@@ -46,26 +173,101 @@ export class OrchestrationEngine {
   ) {}
 
   async handleEvent(sessionId: string, body: EventApiRequest): Promise<EventApiResponse> {
-    return this.processEvent(sessionId, body);
+    return this.withSessionLock(sessionId, () => this.processEvent(sessionId, body));
   }
 
   async handleEventStream(
     sessionId: string,
     body: EventApiRequest,
-    emit: (chunk: EventStreamChunk) => void
+    emit: (chunk: EventStreamChunk) => void,
+    signal?: AbortSignal
   ): Promise<void> {
     try {
-      const response = await this.processEvent(sessionId, body, emit);
+      const pageChangeRunId = this.registerPageChangeRun(sessionId, body);
+      const response = await this.withSessionLock(sessionId, () =>
+        this.processEvent(sessionId, body, emit, signal, pageChangeRunId)
+      );
+      if (signal?.aborted) return;
       emit({
         type: "final",
         data: response
       });
     } catch (error) {
+      if (signal?.aborted) return;
+      if (error instanceof SupersededPageChangeError) {
+        const response = await this.buildNoopResponse(sessionId);
+        emit({
+          type: "final",
+          data: response
+        });
+        return;
+      }
+      console.warn(
+        "[engine_stream_error] " +
+          JSON.stringify({
+            sessionId,
+            message: error instanceof Error ? error.message : "Unknown streaming error"
+          })
+      );
       emit({
         type: "error",
-        error: error instanceof Error ? error.message : "Unknown streaming error"
+        error: GENERIC_STREAM_ERROR_MESSAGE
       });
     }
+  }
+
+  private withSessionLock<T>(sessionId: string, fn: () => Promise<T>): Promise<T> {
+    const store = this.store as JsonStore & {
+      withSessionLock?: (sessionId: string, fn: () => Promise<T>) => Promise<T>;
+    };
+    if (typeof store.withSessionLock === "function") {
+      return store.withSessionLock(sessionId, fn);
+    }
+    return fn();
+  }
+
+  private registerPageChangeRun(
+    sessionId: string,
+    body: EventApiRequest
+  ): number | null {
+    const runId = ++this.nextPageChangeRunId;
+    this.latestPageChangeRunBySession.set(sessionId, runId);
+    return body.event.type === "PAGE_CHANGED" ? runId : null;
+  }
+
+  private assertPageChangeRunCurrent(sessionId: string, runId: number | null | undefined): void {
+    if (!runId) return;
+    if (this.latestPageChangeRunBySession.get(sessionId) !== runId) {
+      throw new SupersededPageChangeError();
+    }
+  }
+
+  private async buildNoopResponse(sessionId: string): Promise<EventApiResponse> {
+    const stored = await this.store.getSession(sessionId);
+    if (!stored) {
+      throw new Error("Session not found");
+    }
+    const state = structuredClone(stored);
+    const pageState = ensurePageState(state, state.currentPage);
+    return {
+      ok: true,
+      newMessages: [],
+      ui: {
+        openQuizModal: false,
+        quiz: null,
+        disableQuizClose: false,
+        passScoreRatio: getSafePassScoreRatio(),
+        widgets: []
+      },
+      patch: {
+        currentPage: state.currentPage,
+        progressText: progressText(state.currentPage),
+        pageState,
+        learnerModel: state.learnerModel,
+        activeIntervention: state.activeIntervention ?? null,
+        quizRecord: undefined
+      }
+    };
   }
 
   private buildFallbackThoughtSummary(
@@ -124,8 +326,10 @@ export class OrchestrationEngine {
       lectureNumPages: number;
       pageContext: { pageText: string; prev: string; next: string };
       fileRef: NonNullable<LectureItem["pdf"]["geminiFile"]> | undefined;
+      assessmentDigest?: string;
     },
-    emit?: (chunk: EventStreamChunk) => void
+    emit?: (chunk: EventStreamChunk) => void,
+    signal?: AbortSignal
   ): Promise<{ plan: ReturnType<typeof parseOrchestratorPlan>; thoughtSummary: string }> {
     const fallbackThought = this.buildFallbackThoughtSummary(
       input.request.event,
@@ -142,6 +346,7 @@ export class OrchestrationEngine {
         prev: input.pageContext.prev,
         next: input.pageContext.next
       },
+      assessmentDigest: input.assessmentDigest ?? "",
       policy: {
         passScoreRatio: appConfig.passScoreRatio,
         recentMessagesN: appConfig.recentMessagesN
@@ -166,7 +371,8 @@ export class OrchestrationEngine {
           model: appConfig.modelName,
           fileRef: input.fileRef,
           prompt,
-          responseJsonSchema: this.orchestrator.getResponseJsonSchema()
+          responseJsonSchema: this.orchestrator.getResponseJsonSchema(),
+          signal
         },
         (delta) => {
           if (delta.channel !== "thought") return;
@@ -181,7 +387,10 @@ export class OrchestrationEngine {
         plan: parseOrchestratorPlan(structured.plan),
         thoughtSummary: (structured.thoughtSummary || fallbackThought).trim()
       };
-    } catch {
+    } catch (error) {
+      if (signal?.aborted) {
+        throw error;
+      }
       return {
         plan: parseOrchestratorPlan(this.orchestrator.fallback(planInput)),
         thoughtSummary: this.emitFallbackThoughts(
@@ -244,12 +453,19 @@ export class OrchestrationEngine {
   private async processEvent(
     sessionId: string,
     body: EventApiRequest,
-    emit?: (chunk: EventStreamChunk) => void
+    emit?: (chunk: EventStreamChunk) => void,
+    signal?: AbortSignal,
+    pageChangeRunId?: number | null
   ): Promise<EventApiResponse> {
+    if (signal?.aborted) {
+      throw new Error("Request aborted");
+    }
+    this.assertPageChangeRunCurrent(sessionId, pageChangeRunId);
     const state = await this.store.getSession(sessionId);
     if (!state) {
       throw new Error("Session not found");
     }
+    this.assertPageChangeRunCurrent(sessionId, pageChangeRunId);
 
     const reduced = this.reducer.reduce(state, body.event, body.clientContext?.currentPage);
     const reducerNewMessages = reduced.messages.slice(state.messages.length);
@@ -267,20 +483,81 @@ export class OrchestrationEngine {
     }
     ensurePageState(reduced, reduced.currentPage);
 
-    const context = await this.pdfIngestService.readPageContext(
-      lecture.pdf.pageIndexPath,
-      reduced.currentPage
-    );
+    const assessmentHandoff =
+      body.event.type === "SAVE_AND_EXIT"
+        ? { assessmentIds: [] as string[], digest: "" }
+        : preparePendingAssessmentHandoff(reduced);
 
-    const { plan, thoughtSummary } = await this.planWithLlm(
-      {
-        request: body,
-        session: reduced,
-        lectureNumPages: maxPage,
-        pageContext: context,
-        fileRef: lecture.pdf.geminiFile
-      },
-      emit
+    const submittedQuizId = String(body.event.payload?.quizId ?? "");
+    const submittedPayloadQuizType = String(body.event.payload?.quizType ?? "").toUpperCase();
+    const submittedQuizRecord = findLatestQuizRecord(
+      reduced,
+      submittedQuizId,
+      submittedPayloadQuizType
+    );
+    const submittedQuizType = String(submittedQuizRecord?.quizType ?? "").toUpperCase();
+    const isDeterministicMcqOxSubmit =
+      body.event.type === "QUIZ_SUBMITTED" &&
+      Boolean(submittedQuizRecord) &&
+      ["MCQ", "OX"].includes(submittedQuizType) &&
+      assessmentHandoff.assessmentIds.length === 0;
+
+    const context = isDeterministicMcqOxSubmit
+      ? { pageText: "", prev: "", next: "" }
+      : await this.pdfIngestService.readPageContext(
+          lecture.pdf.pageIndexPath,
+          reduced.currentPage
+        );
+
+    const { plan: rawPlan, thoughtSummary } = isDeterministicMcqOxSubmit
+      ? {
+          plan: parseOrchestratorPlan(
+            this.orchestrator.fallback({
+              schemaVersion: "1.0",
+              event: body.event,
+              session: reduced,
+              lectureNumPages: maxPage,
+              pageText: "",
+              neighborText: {
+                prev: "",
+                next: ""
+              },
+              assessmentDigest: "",
+              policy: {
+                passScoreRatio: appConfig.passScoreRatio,
+                recentMessagesN: appConfig.recentMessagesN
+              }
+            })
+          ),
+          thoughtSummary: this.emitFallbackThoughts(
+            body.event,
+            reduced.currentPage,
+            emit
+          )
+        }
+      : await this.planWithLlm(
+          {
+            request: body,
+            session: reduced,
+            lectureNumPages: maxPage,
+            pageContext: context,
+            fileRef: lecture.pdf.geminiFile,
+            assessmentDigest: assessmentHandoff.digest
+          },
+          emit,
+          signal
+        );
+    if (signal?.aborted) {
+      throw new Error("Request aborted");
+    }
+    this.assertPageChangeRunCurrent(sessionId, pageChangeRunId);
+
+    // Ver3 Phase 1 — single normalization choke point. Covers LLM success and
+    // fallback paths; guarantees plan.pedagogyPolicy is present before dispatch.
+    const plan = sanitizePlanForUserPageIntent(
+      normalizePlan(rawPlan),
+      body.event,
+      reduced.currentPage
     );
 
     applyLearnerMemoryWrite(reduced, plan.memoryWrite);
@@ -308,6 +585,7 @@ export class OrchestrationEngine {
           quizText: quizContextText
         },
         eventPayload: body.event.payload,
+        pedagogyPolicy: plan.pedagogyPolicy,
         resolvePageContext: async (page, stateSnapshot) => {
           const resolved = await this.pdfIngestService.readPageContext(
             lecture.pdf.pageIndexPath,
@@ -332,9 +610,20 @@ export class OrchestrationEngine {
         }
       },
       {
-        onStreamEvent: (chunk) => emit?.(chunk)
+        onStreamEvent: (chunk) => {
+          if (!signal?.aborted) emit?.(chunk);
+        },
+        abortSignal: signal
       }
     );
+    const responseUi = {
+      ...ui,
+      passScoreRatio: getSafePassScoreRatio(ui.passScoreRatio)
+    };
+    if (signal?.aborted) {
+      throw new Error("Request aborted");
+    }
+    this.assertPageChangeRunCurrent(sessionId, pageChangeRunId);
 
     if (thoughtSummary) {
       for (const message of newMessages) {
@@ -350,22 +639,53 @@ export class OrchestrationEngine {
       dispatchedState,
       appConfig.recentMessagesN
     );
+    if (assessmentHandoff.assessmentIds.length > 0) {
+      markAssessmentsConsumed(dispatchedState, assessmentHandoff.assessmentIds);
+      console.log(
+        "[assessment_consume] " +
+          JSON.stringify({
+            sessionId: dispatchedState.sessionId,
+            deliveredIds: assessmentHandoff.assessmentIds,
+            consumedCount: assessmentHandoff.assessmentIds.length
+          })
+      );
+    }
     dispatchedState.updatedAt = new Date().toISOString();
 
+    this.assertPageChangeRunCurrent(sessionId, pageChangeRunId);
     await this.appendQuizResultLogs(state, dispatchedState);
+    this.assertPageChangeRunCurrent(sessionId, pageChangeRunId);
     await this.store.saveSession(dispatchedState);
+    try {
+      this.assertPageChangeRunCurrent(sessionId, pageChangeRunId);
+    } catch (error) {
+      if (error instanceof SupersededPageChangeError) {
+        await this.store.saveSession(state);
+      }
+      throw error;
+    }
 
     const pageState = ensurePageState(dispatchedState, dispatchedState.currentPage);
+    const patchQuizRecord =
+      body.event.type === "QUIZ_SUBMITTED" && submittedQuizId
+        ? findLatestQuizRecord(
+            dispatchedState,
+            submittedQuizId,
+            submittedPayloadQuizType
+          ) ?? null
+        : undefined;
 
     return {
       ok: true,
       newMessages: allNewMessages,
-      ui,
+      ui: responseUi,
       patch: {
         currentPage: dispatchedState.currentPage,
         progressText: progressText(dispatchedState.currentPage),
         pageState,
-        learnerModel: dispatchedState.learnerModel
+        learnerModel: dispatchedState.learnerModel,
+        activeIntervention: dispatchedState.activeIntervention ?? null,
+        quizRecord: patchQuizRecord
       }
     };
   }

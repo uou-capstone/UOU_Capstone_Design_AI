@@ -15,7 +15,8 @@ function clamp(value: number, min: number, max: number): number {
 }
 
 export function PdfViewer({ pdfUrl, currentPage, knownNumPages, onPageChange }: Props) {
-  const file = useMemo(() => ({ url: pdfUrl }), [pdfUrl]);
+  const file = useMemo(() => ({ url: pdfUrl, withCredentials: true }), [pdfUrl]);
+  const [loadError, setLoadError] = useState("");
   const [zoomRatio, setZoomRatio] = useState(1.0);
   const [loadedNumPages, setLoadedNumPages] = useState<number | null>(null);
   const [pdfDoc, setPdfDoc] = useState<any>(null);
@@ -114,6 +115,7 @@ export function PdfViewer({ pdfUrl, currentPage, knownNumPages, onPageChange }: 
         ref={viewportRef}
         className="pdf-single-view"
         onWheel={(event) => {
+          if (!event.ctrlKey && !event.metaKey) return;
           event.preventDefault();
           const step = clamp(Math.abs(event.deltaY) * 0.00012, 0.003, 0.015);
           const direction = event.deltaY < 0 ? 1 : -1;
@@ -124,9 +126,14 @@ export function PdfViewer({ pdfUrl, currentPage, knownNumPages, onPageChange }: 
           <Document
             file={file}
             loading={<div>PDF 로딩 중...</div>}
+            error={<div>{loadError || "PDF를 불러오지 못했습니다."}</div>}
             onLoadSuccess={(doc) => {
+              setLoadError("");
               setLoadedNumPages(doc.numPages);
               setPdfDoc(doc);
+            }}
+            onLoadError={() => {
+              setLoadError("PDF 접근 권한이 없거나 세션이 만료되었습니다.");
             }}
           >
             <Page

@@ -1,0 +1,661 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>MergeEduAgent Learning Multi-Agent Diagrams</title>
+  <style>
+    :root {
+      --ink: #182033;
+      --muted: #5f6677;
+      --line: #cfd6e6;
+      --paper: #f6f8fb;
+      --panel: #ffffff;
+      --blue: #2c7be5;
+      --teal: #0f9f8f;
+      --green: #2f9e44;
+      --amber: #f59f00;
+      --red: #e03131;
+      --violet: #7048e8;
+      --navy: #2b3a67;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html,
+    body {
+      margin: 0;
+      background: var(--paper);
+      color: var(--ink);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      letter-spacing: 0;
+    }
+
+    body {
+      padding: 24px;
+    }
+
+    .board {
+      width: 1600px;
+      min-height: 980px;
+      margin: 0 auto 32px;
+      padding: 38px;
+      background:
+        linear-gradient(180deg, rgba(255, 255, 255, 0.94), rgba(245, 248, 252, 0.94)),
+        radial-gradient(circle at 8% 4%, rgba(44, 123, 229, 0.08), transparent 32%),
+        radial-gradient(circle at 96% 14%, rgba(15, 159, 143, 0.08), transparent 30%);
+      border: 1px solid #dde3ef;
+      border-radius: 8px;
+      box-shadow: 0 18px 50px rgba(24, 32, 51, 0.12);
+      overflow: hidden;
+    }
+
+    .board.hidden {
+      display: none;
+    }
+
+    .title-row {
+      display: flex;
+      justify-content: space-between;
+      gap: 24px;
+      align-items: flex-start;
+      margin-bottom: 26px;
+    }
+
+    h1 {
+      margin: 0 0 10px;
+      font-size: 38px;
+      line-height: 1.14;
+      font-weight: 780;
+    }
+
+    h2 {
+      margin: 0 0 8px;
+      font-size: 30px;
+      line-height: 1.16;
+      font-weight: 760;
+    }
+
+    .subtitle {
+      margin: 0;
+      color: var(--muted);
+      font-size: 18px;
+      line-height: 1.45;
+      max-width: 1030px;
+    }
+
+    .source-pill {
+      flex: 0 0 auto;
+      padding: 11px 14px;
+      border: 1px solid #d3dbe9;
+      border-radius: 8px;
+      background: #fff;
+      color: #495266;
+      font-size: 13px;
+      line-height: 1.35;
+      max-width: 360px;
+    }
+
+    .context-grid {
+      display: grid;
+      grid-template-columns: 1.05fr 1.15fr 1.1fr;
+      gap: 18px;
+      align-items: stretch;
+    }
+
+    .group {
+      background: rgba(255, 255, 255, 0.9);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 18px;
+      position: relative;
+    }
+
+    .group-title {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 14px;
+      font-size: 19px;
+      font-weight: 760;
+    }
+
+    .tag {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 30px;
+      height: 30px;
+      border-radius: 50%;
+      color: #fff;
+      font-size: 14px;
+      font-weight: 760;
+    }
+
+    .tag.blue { background: var(--blue); }
+    .tag.teal { background: var(--teal); }
+    .tag.green { background: var(--green); }
+    .tag.amber { background: var(--amber); }
+    .tag.red { background: var(--red); }
+    .tag.violet { background: var(--violet); }
+    .tag.navy { background: var(--navy); }
+
+    .node {
+      border: 1px solid #d7deeb;
+      background: #fff;
+      border-radius: 8px;
+      padding: 14px;
+      margin-bottom: 10px;
+    }
+
+    .node strong {
+      display: block;
+      font-size: 16px;
+      margin-bottom: 5px;
+    }
+
+    .node span,
+    .node li {
+      font-size: 13.5px;
+      line-height: 1.38;
+      color: #535d72;
+      overflow-wrap: anywhere;
+    }
+
+    .node ul {
+      margin: 7px 0 0;
+      padding-left: 18px;
+    }
+
+    .pipeline {
+      display: grid;
+      grid-template-columns: repeat(7, 1fr);
+      gap: 10px;
+      margin: 22px 0;
+    }
+
+    .pipe-step {
+      min-height: 114px;
+      border-radius: 8px;
+      padding: 13px 12px;
+      border: 1px solid #d4dceb;
+      background: #fff;
+      position: relative;
+    }
+
+    .pipe-step::after {
+      content: "";
+      position: absolute;
+      top: 50%;
+      right: -10px;
+      width: 10px;
+      height: 2px;
+      background: #aeb8ca;
+    }
+
+    .pipe-step:last-child::after {
+      display: none;
+    }
+
+    .pipe-step b {
+      display: block;
+      margin-bottom: 7px;
+      font-size: 15px;
+    }
+
+    .pipe-step p {
+      margin: 0;
+      font-size: 12.8px;
+      line-height: 1.36;
+      color: #586275;
+    }
+
+    .core-rule {
+      margin-top: 16px;
+      border: 2px solid rgba(44, 123, 229, 0.35);
+      background: #eef5ff;
+      border-radius: 8px;
+      padding: 16px 18px;
+      font-size: 20px;
+      line-height: 1.35;
+      font-weight: 740;
+      text-align: center;
+      color: #174986;
+    }
+
+    .mini-map {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 12px;
+      margin-top: 15px;
+    }
+
+    .mini {
+      border-radius: 8px;
+      padding: 13px;
+      color: #fff;
+      min-height: 116px;
+    }
+
+    .mini b {
+      display: block;
+      font-size: 15px;
+      margin-bottom: 6px;
+    }
+
+    .mini p {
+      margin: 0;
+      font-size: 12.7px;
+      line-height: 1.34;
+    }
+
+    .mini.blue { background: #2c7be5; }
+    .mini.teal { background: #0f9f8f; }
+    .mini.green { background: #2f9e44; }
+    .mini.amber { background: #d97706; }
+    .mini.red { background: #d9480f; }
+    .mini.violet { background: #6741d9; }
+
+    .scenario-board {
+      min-height: 1020px;
+    }
+
+    .scenario-layout {
+      display: grid;
+      grid-template-columns: 320px 1fr;
+      gap: 22px;
+    }
+
+    .scenario-aside {
+      background: #fff;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 18px;
+    }
+
+    .scenario-aside h3 {
+      margin: 0 0 12px;
+      font-size: 22px;
+    }
+
+    .scenario-aside p,
+    .scenario-aside li {
+      color: #566074;
+      font-size: 14.5px;
+      line-height: 1.45;
+    }
+
+    .scenario-aside ul {
+      padding-left: 18px;
+      margin: 10px 0 0;
+    }
+
+    .swimlanes {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+      gap: 10px;
+      position: relative;
+    }
+
+    .lane {
+      border: 1px solid #d6deeb;
+      background: rgba(255, 255, 255, 0.74);
+      border-radius: 8px;
+      padding: 12px 10px;
+      min-height: 790px;
+    }
+
+    .lane-title {
+      height: 42px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      border-radius: 8px;
+      background: #24324b;
+      color: #fff;
+      font-size: 14px;
+      font-weight: 760;
+      line-height: 1.15;
+      margin-bottom: 14px;
+    }
+
+    .event {
+      min-height: 72px;
+      margin-bottom: 14px;
+      padding: 11px;
+      border: 1px solid #d8e0ec;
+      border-radius: 8px;
+      background: #fff;
+      font-size: 13px;
+      line-height: 1.33;
+      color: #3d4658;
+      position: relative;
+      overflow-wrap: anywhere;
+      word-break: keep-all;
+    }
+
+    .event b {
+      display: block;
+      color: var(--ink);
+      font-size: 14px;
+      margin-bottom: 4px;
+    }
+
+    .event.empty {
+      opacity: 0;
+      border-color: transparent;
+      background: transparent;
+    }
+
+    .event.blue { border-left: 6px solid var(--blue); }
+    .event.teal { border-left: 6px solid var(--teal); }
+    .event.green { border-left: 6px solid var(--green); }
+    .event.amber { border-left: 6px solid var(--amber); }
+    .event.red { border-left: 6px solid var(--red); }
+    .event.violet { border-left: 6px solid var(--violet); }
+    .event.navy { border-left: 6px solid var(--navy); }
+
+    .sequence-note {
+      grid-column: 1 / -1;
+      margin-top: 14px;
+      padding: 14px 16px;
+      background: #fff;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      color: #495266;
+      font-size: 15px;
+      line-height: 1.42;
+    }
+
+    .legend-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 16px;
+    }
+
+    .legend {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      border: 1px solid #d7deeb;
+      background: #fff;
+      border-radius: 8px;
+      padding: 7px 10px;
+      font-size: 13px;
+      color: #566074;
+    }
+
+    .dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      display: inline-block;
+    }
+
+    .dot.blue { background: var(--blue); }
+    .dot.teal { background: var(--teal); }
+    .dot.green { background: var(--green); }
+    .dot.amber { background: var(--amber); }
+    .dot.red { background: var(--red); }
+    .dot.violet { background: var(--violet); }
+    .dot.navy { background: var(--navy); }
+  </style>
+</head>
+<body>
+  <main>
+    <section class="board" data-view="context">
+      <div class="title-row">
+        <div>
+          <h1>학습 멀티 에이전트 전체 컨텍스트</h1>
+          <p class="subtitle">
+            현재 구조는 LLM들이 서로 임의로 대화하는 모델이 아니라, 오케스트레이터가 제한된 tool call 계획을 만들고 서버가 검증한 뒤 전문 에이전트를 순차 실행하는 구조다.
+          </p>
+        </div>
+        <div class="source-pill">
+          기준 코드: OrchestrationEngine, Orchestrator, ToolDispatcher, QuizAssessmentService, QuizDiagnosisService, GeminiBridgeClient
+        </div>
+      </div>
+
+      <div class="pipeline">
+        <div class="pipe-step"><b>1. Event</b><p>Session UI가 event/stream으로 사용자 행동을 보낸다.</p></div>
+        <div class="pipe-step"><b>2. Reduce</b><p>StateReducer가 페이지, 메시지, 상태를 먼저 반영한다.</p></div>
+        <div class="pipe-step"><b>3. Context</b><p>PDF 페이지 텍스트, 메모리, QA thread, assessment를 압축한다.</p></div>
+        <div class="pipe-step"><b>4. Plan</b><p>Orchestrator가 pedagogyPolicy와 tool actions JSON을 만든다.</p></div>
+        <div class="pipe-step"><b>5. Verify</b><p>ToolDispatcher가 policy, budget, hard cap을 적용한다.</p></div>
+        <div class="pipe-step"><b>6. Agents</b><p>설명, QA, 퀴즈, 채점, 오답교정 에이전트를 호출한다.</p></div>
+        <div class="pipe-step"><b>7. Persist</b><p>SessionState, summary, assessment, quiz log를 저장한다.</p></div>
+      </div>
+
+      <div class="context-grid">
+        <div class="group">
+          <div class="group-title"><span class="tag blue">UI</span> 학생 접점</div>
+          <div class="node"><strong>Web Session UI</strong><span>질문, 페이지 이동, 퀴즈 선택, 답안 제출을 이벤트로 보낸다.</span></div>
+          <div class="node"><strong>Streaming</strong><span>orchestrator thought와 agent answer delta를 NDJSON으로 받는다.</span></div>
+          <div class="node"><strong>Widgets</strong><span>Binary decision, quiz type picker, quiz modal을 서버 patch 기준으로 연다.</span></div>
+        </div>
+
+        <div class="group">
+          <div class="group-title"><span class="tag navy">CORE</span> 오케스트레이션 중심</div>
+          <div class="node"><strong>OrchestrationEngine</strong><span>session lock 안에서 event 처리 순서를 보장한다.</span></div>
+          <div class="node"><strong>Orchestrator</strong><span>prompt, schema, fallback plan, tool catalog를 제공한다.</span></div>
+          <div class="node"><strong>PedagogyPolicy</strong><span>EXPLAIN_FIRST, DIAGNOSE, MISCONCEPTION_REPAIR, MINIMAL_HINT, ADVANCE 등 이번 턴의 교수 목적을 먼저 정한다.</span></div>
+          <div class="node"><strong>ToolDispatcher verifier</strong><span>repair 자동 주입, hint-only 보정, interventionBudget trim, 8개 hard cap을 적용한다.</span></div>
+        </div>
+
+        <div class="group">
+          <div class="group-title"><span class="tag teal">LLM</span> 모델 호출 경계</div>
+          <div class="node"><strong>GeminiBridgeClient</strong><span>서버에서 AI Bridge로 스트리밍 요청을 보낸다.</span></div>
+          <div class="node"><strong>AI Bridge FastAPI</strong><span>PDF fileRef와 prompt를 Gemini API에 전달하고 thought/answer를 분리한다.</span></div>
+          <div class="node"><strong>Cached PDF</strong><span>geminiFile과 cached_content를 재사용해 PDF 컨텍스트 비용을 줄인다.</span></div>
+        </div>
+      </div>
+
+      <div class="mini-map">
+        <div class="mini blue"><b>ExplainerAgent</b><p>페이지 설명을 생성하고 pageState.explainSummary와 explainMarkdown을 저장한다.</p></div>
+        <div class="mini teal"><b>QaAgent</b><p>같은 페이지 follow-up이면 qaThreadDigest만 이어 받아 답한다.</p></div>
+        <div class="mini green"><b>QuizAgents</b><p>1페이지부터 현재 페이지까지의 누적 컨텍스트로 퀴즈 JSON을 만든다.</p></div>
+        <div class="mini amber"><b>GraderAgent</b><p>SHORT/ESSAY 답안을 LLM으로 채점하고 grading result를 만든다.</p></div>
+        <div class="mini red"><b>MisconceptionRepairAgent</b><p>저득점 후 학생의 진단 답변을 바탕으로 헷갈린 지점만 짧게 교정한다.</p></div>
+        <div class="mini violet"><b>Memory & Assessment</b><p>integratedMemory, activeIntervention, quizAssessments가 다음 턴 개인화 신호가 된다.</p></div>
+      </div>
+
+      <div class="core-rule">
+        핵심 규칙: LLM은 “무엇을 호출할지”만 고른다. 실제 실행, 검증, 상태 저장은 서버가 담당한다.
+      </div>
+    </section>
+
+    <section class="board scenario-board" data-view="session-explain">
+      <div class="title-row">
+        <div>
+          <h2>시나리오 1. 세션 진입과 페이지 설명</h2>
+          <p class="subtitle">처음 들어오면 바로 설명하지 않고 시작 여부를 묻고, 동의 후에는 현재 페이지 설명과 다음 학습 선택지를 만든다.</p>
+        </div>
+        <div class="source-pill">주요 코드: StateReducer, Orchestrator.fallback, EXPLAIN_PAGE, ExplainerAgent</div>
+      </div>
+      <div class="scenario-layout">
+        <aside class="scenario-aside">
+          <h3>읽는 법</h3>
+          <p>왼쪽에서 오른쪽으로 한 줄씩 내려가면 된다. 굵은 글씨는 실제 코드의 책임 단위다.</p>
+          <ul>
+            <li>SESSION_ENTERED는 보통 시작 질문을 만든다.</li>
+            <li>START_EXPLANATION_DECISION accept=true면 EXPLAIN_PAGE가 실행된다.</li>
+            <li>설명 뒤에는 퀴즈 또는 다음 페이지 결정을 유도한다.</li>
+          </ul>
+        </aside>
+        <div class="swimlanes">
+          <div class="lane"><div class="lane-title">학생 / UI</div><div class="event blue"><b>1. 세션 입장</b>event: SESSION_ENTERED</div><div class="event blue"><b>5. 예 선택</b>START_EXPLANATION_DECISION accept=true</div><div class="event empty"></div><div class="event blue"><b>10. 화면 갱신</b>설명 메시지와 선택 위젯 표시</div></div>
+          <div class="lane"><div class="lane-title">OrchestrationEngine</div><div class="event navy"><b>2. session lock</b>동일 세션 이벤트를 직렬 처리</div><div class="event navy"><b>6. reduce</b>pageState를 EXPLAINING으로 갱신</div><div class="event navy"><b>8. dispatch</b>계획된 tool action 실행</div><div class="event navy"><b>11. save</b>summary와 session 저장</div></div>
+          <div class="lane"><div class="lane-title">Planner / Policy</div><div class="event violet"><b>3. 시작 질문 plan</b>PROMPT_BINARY_DECISION</div><div class="event violet"><b>7. EXPLAIN_FIRST</b>APPEND_MESSAGE, EXPLAIN_PAGE, QUIZ_DECISION 또는 NEXT_PAGE_DECISION</div><div class="event empty"></div><div class="event empty"></div></div>
+          <div class="lane"><div class="lane-title">Dispatcher / Agent</div><div class="event amber"><b>4. 위젯 메시지</b>설명 시작 여부를 묻는다.</div><div class="event amber"><b>9. ExplainerAgent</b>PDF pageText와 learnerMemoryDigest로 설명 생성</div><div class="event amber"><b>9b. pageState</b>EXPLAINED, explainSummary 저장</div><div class="event empty"></div></div>
+          <div class="lane"><div class="lane-title">저장되는 상태</div><div class="event green"><b>messages</b>ORCHESTRATOR 질문</div><div class="event green"><b>pageStates</b>현재 페이지 설명 본문과 요약</div><div class="event green"><b>ui.widgets</b>퀴즈 진행 또는 다음 페이지 선택</div><div class="event green"><b>conversationSummary</b>최근 대화 요약 갱신</div></div>
+        </div>
+        <div class="sequence-note">포인트: 처음부터 모든 것을 LLM에 맡기지 않는다. 이벤트를 reducer가 먼저 정리하고, planner는 제한된 tool call만 낸다.</div>
+      </div>
+    </section>
+
+    <section class="board scenario-board" data-view="qa">
+      <div class="title-row">
+        <div>
+          <h2>시나리오 2. 자유 질문과 QA follow-up</h2>
+          <p class="subtitle">학생 질문은 일반 설명 재시작이 아니라 ANSWER_QUESTION으로 라우팅되고, 같은 페이지 후속 질문만 짧은 thread로 이어진다.</p>
+        </div>
+        <div class="source-pill">주요 코드: QaThreadService, ANSWER_QUESTION, QaAgent</div>
+      </div>
+      <div class="scenario-layout">
+        <aside class="scenario-aside">
+          <h3>판단 기준</h3>
+          <ul>
+            <li>같은 페이지에 qaThread가 있으면 FOLLOW_UP.</li>
+            <li>새 질문이면 START_NEW로 thread를 비운다.</li>
+            <li>QA에는 설명 전문 전체가 아니라 이전 QA 문맥 최대 6턴만 전달된다.</li>
+          </ul>
+        </aside>
+        <div class="swimlanes">
+          <div class="lane"><div class="lane-title">학생 / UI</div><div class="event blue"><b>1. 질문 입력</b>“왜 이렇게 되나요?”</div><div class="event empty"></div><div class="event blue"><b>7. 답변 수신</b>QA 답변 stream 표시</div><div class="event blue"><b>9. 후속 질문</b>“그럼 그 식은요?”</div></div>
+          <div class="lane"><div class="lane-title">Reducer / Engine</div><div class="event navy"><b>2. user message 저장</b>role=user, agent=SYSTEM</div><div class="event navy"><b>3. context 구성</b>pageText, memory, qaThreadDigest</div><div class="event empty"></div><div class="event navy"><b>10. 같은 페이지 확인</b>qaThread.page === currentPage</div></div>
+          <div class="lane"><div class="lane-title">Planner / Policy</div><div class="event violet"><b>4. ADVANCE 또는 MINIMAL_HINT</b>일반 질문이면 ANSWER_QUESTION</div><div class="event violet"><b>4b. threadMode</b>START_NEW 또는 FOLLOW_UP</div><div class="event empty"></div><div class="event violet"><b>11. FOLLOW_UP plan</b>이전 QA만 덧붙인다.</div></div>
+          <div class="lane"><div class="lane-title">QaAgent</div><div class="event teal"><b>5. answerQuestionStream</b>GeminiBridgeClient 호출</div><div class="event teal"><b>6. Markdown answer</b>현재 페이지 근거로 답변</div><div class="event teal"><b>8. appendQaThreadTurn</b>질문과 답변을 thread에 저장</div><div class="event teal"><b>12. 이전 QA 연결</b>최대 6턴 digest 사용</div></div>
+          <div class="lane"><div class="lane-title">저장되는 상태</div><div class="event green"><b>messages</b>학생 질문과 QA 답변</div><div class="event green"><b>qaThread</b>page, turns, lastUpdatedAt</div><div class="event green"><b>ui.widgets</b>필요하면 NEXT_PAGE_DECISION</div><div class="event green"><b>summary</b>최근 대화 압축</div></div>
+        </div>
+        <div class="sequence-note">포인트: QA는 세션 전체 대화를 무작정 끌고 가지 않는다. 같은 페이지의 질문-답변 thread만 짧게 유지한다.</div>
+      </div>
+    </section>
+
+    <section class="board scenario-board" data-view="quiz">
+      <div class="title-row">
+        <div>
+          <h2>시나리오 3. 퀴즈 생성</h2>
+          <p class="subtitle">퀴즈는 설명 이후 제안되거나 학생이 명시적으로 요청할 때 열리고, 선택된 유형에 따라 QuizAgents가 JSON 퀴즈를 만든다.</p>
+        </div>
+        <div class="source-pill">주요 코드: OPEN_QUIZ_TYPE_PICKER, GENERATE_QUIZ_*, QuizAgents</div>
+      </div>
+      <div class="scenario-layout">
+        <aside class="scenario-aside">
+          <h3>유형</h3>
+          <ul>
+            <li>MCQ: 객관식</li>
+            <li>OX: 참거짓</li>
+            <li>SHORT: 단답형</li>
+            <li>ESSAY: 서술형</li>
+          </ul>
+          <p>추천 유형은 선호 메모리와 learner level을 참고한다.</p>
+        </aside>
+        <div class="swimlanes">
+          <div class="lane"><div class="lane-title">학생 / UI</div><div class="event blue"><b>1. 퀴즈 진행 동의</b>QUIZ_DECISION accept=true</div><div class="event blue"><b>3. 유형 선택</b>QUIZ_TYPE_SELECTED</div><div class="event blue"><b>8. 모달 오픈</b>퀴즈 응시 시작</div><div class="event empty"></div></div>
+          <div class="lane"><div class="lane-title">Engine</div><div class="event navy"><b>2. picker 표시</b>OPEN_QUIZ_TYPE_PICKER</div><div class="event navy"><b>4. 누적 컨텍스트</b>buildPageHistoryDigest 또는 readCumulativeContext</div><div class="event navy"><b>7. UI patch</b>openQuizModal=true</div><div class="event navy"><b>9. save</b>QuizRecord 포함 저장</div></div>
+          <div class="lane"><div class="lane-title">Planner / Policy</div><div class="event violet"><b>2b. ADVANCE</b>퀴즈 유형 선택 대기</div><div class="event violet"><b>5. tool 결정</b>GENERATE_QUIZ_MCQ/OX/SHORT/ESSAY</div><div class="event empty"></div><div class="event empty"></div></div>
+          <div class="lane"><div class="lane-title">QuizAgents</div><div class="event teal"><b>6. generateQuizStream</b>coverage 1페이지부터 현재 페이지</div><div class="event teal"><b>6b. parseQuizJson</b>schema 검증 후 normalizeQuiz</div><div class="event empty"></div><div class="event empty"></div></div>
+          <div class="lane"><div class="lane-title">저장되는 상태</div><div class="event green"><b>quizzes[]</b>quizId, quizType, createdFromPage, quizJson</div><div class="event green"><b>pageState</b>QUIZ_IN_PROGRESS</div><div class="event green"><b>ui.quiz</b>disableQuizClose=true</div><div class="event green"><b>message</b>QUIZ agent 생성 안내</div></div>
+        </div>
+        <div class="sequence-note">포인트: 퀴즈 생성에는 현재 페이지만이 아니라 현재 페이지까지의 학습 이력 digest 또는 누적 PDF 텍스트가 들어간다.</div>
+      </div>
+    </section>
+
+    <section class="board scenario-board" data-view="grading">
+      <div class="title-row">
+        <div>
+          <h2>시나리오 4. 채점, assessment, 다음 턴 handoff</h2>
+          <p class="subtitle">채점 결과는 quiz.grading에 저장되고, 별도의 quizAssessment가 PENDING 상태로 만들어져 다음 턴 planner 입력으로 전달된다.</p>
+        </div>
+        <div class="source-pill">주요 코드: AUTO_GRADE_MCQ_OX, GRADE_SHORT_OR_ESSAY, QuizAssessmentService</div>
+      </div>
+      <div class="scenario-layout">
+        <aside class="scenario-aside">
+          <h3>두 채점 경로</h3>
+          <ul>
+            <li>MCQ/OX는 pending assessment가 없으면 LLM 없이 deterministic fast path.</li>
+            <li>SHORT/ESSAY는 GraderAgent가 Gemini로 채점한다.</li>
+            <li>assessment는 즉시 메모리에 쓰지 않고 다음 턴 개인화 후보로 넘긴다.</li>
+          </ul>
+        </aside>
+        <div class="swimlanes">
+          <div class="lane"><div class="lane-title">학생 / UI</div><div class="event blue"><b>1. 답안 제출</b>QUIZ_SUBMITTED</div><div class="event blue"><b>8. 채점 결과 표시</b>점수와 피드백 확인</div><div class="event blue"><b>10. 다음 행동</b>질문, 다음 페이지, 복습 등</div><div class="event empty"></div></div>
+          <div class="lane"><div class="lane-title">Engine</div><div class="event navy"><b>2. fast path 판정</b>MCQ/OX + pending 없음이면 planner 생략</div><div class="event navy"><b>6. summary 갱신</b>conversationSummary</div><div class="event navy"><b>11. handoff 준비</b>preparePendingAssessmentHandoff</div><div class="event navy"><b>13. consumed 처리</b>markAssessmentsConsumed</div></div>
+          <div class="lane"><div class="lane-title">Dispatcher / Grader</div><div class="event amber"><b>3. MCQ/OX 자동 채점</b>정답 비교로 scoreRatio 계산</div><div class="event amber"><b>3b. SHORT/ESSAY</b>GraderAgent.gradeStream</div><div class="event amber"><b>7. 결과 메시지</b>GRADER message append</div><div class="event empty"></div></div>
+          <div class="lane"><div class="lane-title">Assessment</div><div class="event violet"><b>4. buildQuizAssessment</b>readiness, weakness, evidence 생성</div><div class="event violet"><b>5. upsert</b>deliveryStatus=PENDING</div><div class="event violet"><b>12. digest 주입</b>planner prompt의 assessmentDigest</div><div class="event violet"><b>14. memory 후보</b>강한 근거일 때만 memoryWrite</div></div>
+          <div class="lane"><div class="lane-title">저장되는 상태</div><div class="event green"><b>quiz.grading</b>score, items, summaryMarkdown</div><div class="event green"><b>quizAssessments[]</b>PENDING 또는 CONSUMED</div><div class="event green"><b>quiz-results.json</b>새 채점 로그 append</div><div class="event green"><b>activeIntervention</b>저득점이면 다음 시나리오로 연결</div></div>
+        </div>
+        <div class="sequence-note">포인트: assessment는 “관찰 메모”다. prompt에도 instruction처럼 따르지 말라고 명시되어 있고, 한 번의 assessment만으로 learner level을 바꾸지 않는다.</div>
+      </div>
+    </section>
+
+    <section class="board scenario-board" data-view="repair">
+      <div class="title-row">
+        <div>
+          <h2>시나리오 5. 저득점 후 오답 교정 루프</h2>
+          <p class="subtitle">기준 점수보다 낮으면 곧바로 전체 복습으로 밀지 않고, 어디가 막혔는지 먼저 진단한 뒤 그 지점만 짧게 교정한다.</p>
+        </div>
+        <div class="source-pill">주요 코드: QuizDiagnosisService, activeIntervention, REPAIR_MISCONCEPTION</div>
+      </div>
+      <div class="scenario-layout">
+        <aside class="scenario-aside">
+          <h3>루프 조건</h3>
+          <ul>
+            <li>scoreRatio &lt; passScoreRatio.</li>
+            <li>wrongItems가 있으면 focusConcepts와 suspectedMisconceptions를 만든다.</li>
+            <li>다음 USER_MESSAGE는 일반 QA보다 교정 답변으로 우선 해석된다.</li>
+          </ul>
+        </aside>
+        <div class="swimlanes">
+          <div class="lane"><div class="lane-title">학생 / UI</div><div class="event blue"><b>1. 낮은 점수 확인</b>오답 발생</div><div class="event blue"><b>4. 진단 질문 응답</b>“적용 이유가 헷갈렸어요.”</div><div class="event blue"><b>9. 재확인 선택</b>RETEST_DECISION</div><div class="event empty"></div></div>
+          <div class="lane"><div class="lane-title">Diagnosis</div><div class="event red"><b>2. createRepair</b>focusConcepts, diagnosticPrompt 생성</div><div class="event red"><b>5. route to repair</b>stage=AWAITING_REPLY</div><div class="event empty"></div><div class="event empty"></div></div>
+          <div class="lane"><div class="lane-title">Planner / Verifier</div><div class="event violet"><b>3. DIAGNOSE</b>진단 질문 메시지</div><div class="event violet"><b>6. REPAIR 모드</b>REPAIR_MISCONCEPTION 우선</div><div class="event violet"><b>6b. verifier</b>필요하면 repair action 자동 주입</div><div class="event empty"></div></div>
+          <div class="lane"><div class="lane-title">Repair Agent</div><div class="event teal"><b>7. buildRepairQuestion</b>학생 답변과 의심 오개념 결합</div><div class="event teal"><b>8. RepairAgent</b>전체 설명 대신 막힌 지점만 교정</div><div class="event teal"><b>9b. retest prompt</b>같은 개념을 빠르게 재확인할지 묻는다.</div><div class="event empty"></div></div>
+          <div class="lane"><div class="lane-title">저장되는 상태</div><div class="event green"><b>activeIntervention</b>AWAITING_REPLY → REPAIR_DELIVERED</div><div class="event green"><b>integratedMemory</b>weaknesses, misconceptions, nextCoachingGoals 병합</div><div class="event green"><b>feedback[]</b>오답 교정 완료 로그</div><div class="event green"><b>pageState</b>REVIEW_IN_PROGRESS → REVIEW_DONE</div></div>
+        </div>
+        <div class="sequence-note">포인트: 오답은 단순 “다시 설명”이 아니라 진단 질문, 맞춤 교정, 메모리 갱신, 재시험 선택으로 이어지는 작은 루프다.</div>
+      </div>
+    </section>
+
+    <section class="board scenario-board" data-view="safety">
+      <div class="title-row">
+        <div>
+          <h2>시나리오 6. 안전장치와 fallback</h2>
+          <p class="subtitle">모델 호출이 실패하거나 JSON plan이 깨져도 deterministic fallback과 verifier가 같은 계약을 유지한다.</p>
+        </div>
+        <div class="source-pill">주요 코드: planWithLlm catch, normalizePlan, verifyAndPatchPlan, AbortSignal</div>
+      </div>
+      <div class="scenario-layout">
+        <aside class="scenario-aside">
+          <h3>fallback 조건</h3>
+          <ul>
+            <li>SAVE_AND_EXIT.</li>
+            <li>geminiFile 없음.</li>
+            <li>bridge/model 실패 또는 plan parsing 실패.</li>
+            <li>pending assessment 없는 MCQ/OX 제출 fast path.</li>
+          </ul>
+        </aside>
+        <div class="swimlanes">
+          <div class="lane"><div class="lane-title">이벤트</div><div class="event blue"><b>1. 요청 도착</b>일반 이벤트 또는 stream</div><div class="event blue"><b>6. 연결 종료</b>사용자가 stream을 닫음</div><div class="event empty"></div><div class="event empty"></div></div>
+          <div class="lane"><div class="lane-title">Planner</div><div class="event violet"><b>2. LLM path 시도</b>schema 강제 JSON plan</div><div class="event violet"><b>3. 실패 감지</b>bridge error, parse error, fileRef 없음</div><div class="event violet"><b>4. fallback plan</b>Orchestrator.fallback</div><div class="event empty"></div></div>
+          <div class="lane"><div class="lane-title">Policy Verifier</div><div class="event amber"><b>5. normalizePlan</b>policy 없으면 ADVANCE 기본값</div><div class="event amber"><b>5b. verifyAndPatchPlan</b>repair 주입, hold back trim, budget trim</div><div class="event amber"><b>5c. hard cap</b>최대 8개 tool</div><div class="event empty"></div></div>
+          <div class="lane"><div class="lane-title">Execution</div><div class="event teal"><b>7. AbortSignal 전파</b>orchestrator와 하위 agent stream fetch 중단</div><div class="event teal"><b>8. stale 저장 방지</b>aborted면 final/error emit과 저장 중단</div><div class="event teal"><b>9. tool 실패</b>개별 tool 오류는 SYSTEM 메시지로 남기고 다음 action 진행</div><div class="event empty"></div></div>
+          <div class="lane"><div class="lane-title">보장되는 것</div><div class="event green"><b>서버 소유 상태</b>client save가 세션을 덮어쓰지 못함</div><div class="event green"><b>제한된 action</b>LLM이 임의 실행하지 못함</div><div class="event green"><b>관측 가능 로그</b>[verifier], [assessment] 로그</div><div class="event green"><b>복구 가능성</b>테스트 가능한 deterministic 기준선</div></div>
+        </div>
+        <div class="sequence-note">포인트: “LLM planner 우선”이지만, 실패하면 바로 깨지는 구조가 아니라 fallback plan과 verifier가 같은 tool-call 계약을 유지한다.</div>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    const params = new URLSearchParams(window.location.search);
+    const view = params.get("view");
+    if (view) {
+      document.querySelectorAll(".board").forEach((board) => {
+        if (board.dataset.view !== view) board.classList.add("hidden");
+      });
+      document.body.style.padding = "0";
+      const visible = document.querySelector(`.board[data-view="${view}"]`);
+      if (visible) {
+        visible.style.margin = "0";
+        visible.style.borderRadius = "0";
+        document.title = `MergeEduAgent Diagram - ${view}`;
+      }
+    }
+  </script>
+</body>
+</html>

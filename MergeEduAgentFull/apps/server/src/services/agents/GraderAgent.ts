@@ -25,7 +25,8 @@ export class GraderAgent {
       answers: Record<string, unknown>;
       learnerMemoryDigest: string;
     },
-    onDelta?: (delta: { channel: "thought" | "answer"; text: string }) => void
+    onDelta?: (delta: { channel: "thought" | "answer"; text: string }) => void,
+    signal?: AbortSignal
   ): Promise<{ grading: GradingResult; thoughtSummary: string }> {
     const response = await this.bridge.gradeQuizStream(
       {
@@ -36,7 +37,8 @@ export class GraderAgent {
         answers: input.answers,
         learnerMemoryDigest: input.learnerMemoryDigest
       },
-      onDelta
+      onDelta,
+      signal
     );
     return {
       grading: parseGrading(response.grading),
