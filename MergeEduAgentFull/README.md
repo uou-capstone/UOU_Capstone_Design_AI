@@ -2,6 +2,60 @@
 
 Gemini 기반 PDF 강의 튜터, 퀴즈, 오답 교정, 학생별 학습 메모리, 선생님용 역량 리포트를 한 흐름으로 연결한 학습 시스템입니다.
 
+# 0430 업데이트 사항
+
+## 회원 정보 수정 기능 추가
+
+로그인 후 대시보드에서 본인의 회원 정보를 확인하고 수정할 수 있는 영역을 추가했다. 사용자는 현재 아이디 이메일과 비밀번호 표시 상태를 확인할 수 있고, `회원 정보 수정`을 통해 이메일과 비밀번호를 변경할 수 있다.
+
+구현 위치:
+
+- `apps/web/src/components/account/AccountProfilePanel.tsx`
+  - 회원 정보 표시, 수정 모드 전환, 이메일/비밀번호 입력, 현재 비밀번호 확인, 저장 결과와 개발자 인증 코드 표시 UI를 담당한다.
+- `apps/web/src/routes/Dashboard.tsx`
+  - 로그인 후 대시보드에 `AccountProfilePanel`을 렌더링한다.
+- `apps/web/src/auth/AuthProvider.tsx`
+  - 회원 정보 수정 후 사용자 상태를 갱신하고, 이메일이 바뀌어 재인증이 필요하면 인증 화면 흐름으로 연결한다.
+- `apps/web/src/api/endpoints.ts`
+  - `updateAccount` API 클라이언트 함수를 추가했다.
+- `apps/server/src/routes/auth.ts`
+  - `PATCH /api/auth/me` 엔드포인트를 추가해 이메일과 비밀번호 수정을 처리한다.
+- `apps/server/src/services/auth/AuthService.ts`
+  - 현재 비밀번호 검증, 이메일 중복 검사, 비밀번호 해시 갱신, 이메일 변경 시 재인증 코드 발급 로직을 담당한다.
+- `apps/server/src/services/storage/JsonStore.ts`
+  - 사용자 정보 업데이트 저장 로직을 추가했다.
+- `apps/server/src/services/security/RequestEncryptionService.ts`
+  - `/api/auth/me` 경로도 요청 암호화 필수 경로에 포함되도록 보완했다.
+- `.env.example`
+  - 개발자 모드 이메일 인증 코드 노출 설정과 `/api/auth/me` 암호화 경로 예시를 추가했다.
+- `apps/server/src/tests/authFlow.test.ts`, `e2e/account-profile.spec.ts`
+  - 회원 정보 수정, 이메일 재인증, 기존/신규 비밀번호 로그인 흐름을 검증한다.
+
+## 학생 리포트 기반 챗봇 기능 추가
+
+학생별 역량 리포트 화면에서 우하단 원형 챗봇 버튼을 눌러 선택된 학생에 대해 추가 질문을 할 수 있는 기능을 추가했다. 챗봇은 현재 화면에서 선택된 학생 한 명의 정보, 해당 학생의 강의실 로그 데이터, 저장된 학생 분석 리포트를 Gemini 입력으로 사용한다. 멀티모달 입력은 막고 텍스트 `textarea` 입력만 제공한다.
+
+구현 위치:
+
+- `apps/web/src/routes/ClassroomReport.tsx`
+  - 우하단 고정 챗봇 버튼, 채팅 drawer, 텍스트 입력창, 메시지 스트리밍 표시, 학생 변경 시 채팅 초기화와 stale stream 무시 로직을 담당한다.
+- `apps/web/src/styles/global.css`
+  - `report-chat-*` 전용 스타일을 추가해 기존 세션 채팅 UI와 충돌하지 않도록 분리했다. 모바일에서도 drawer가 화면을 벗어나지 않도록 높이와 위치를 조정했다.
+- `apps/web/src/api/endpoints.ts`
+  - `streamStudentReportChat` 클라이언트 함수를 추가해 NDJSON 스트림을 읽고 `answer_delta`, `thought_delta`, `done`, `error` 이벤트를 처리한다.
+- `apps/server/src/routes/classrooms.ts`
+  - `POST /api/classrooms/:classroomId/report/students/:studentUserId/chat/stream` 엔드포인트를 추가했다. 선생님 권한, 강의실 소유자, 등록 학생, 저장 리포트 존재 여부를 검증한다.
+- `apps/server/src/services/report/StudentCompetencyReportService.ts`
+  - 선택된 학생 한 명만 `ownerIds: [student.id]`로 집계해 챗봇 prompt를 만든다. 대화 history는 참고 문맥으로만 쓰고, 저장 리포트와 선택 학생 로그를 근거 데이터로 사용한다.
+- `apps/server/src/services/llm/GeminiBridgeClient.ts`
+  - 학생 리포트 챗봇용 Markdown 스트리밍 bridge 호출을 추가했다.
+- `apps/ai-bridge/main.py`
+  - `/bridge/student_report_chat_stream` 엔드포인트를 추가해 Gemini schema-less Markdown 스트림을 반환한다.
+- `apps/server/src/tests/studentCompetencyReport.test.ts`
+  - 챗봇 prompt가 선택 학생의 저장 리포트와 로그만 포함하고 다른 학생 데이터를 섞지 않는지 검증한다.
+- `e2e/student-report-chatbot.spec.ts`
+  - fake NDJSON 기반으로 챗봇 drawer 열림, 텍스트 전용 입력, 리포트 미생성 409 안내, 학생 전환 중 늦은 스트림 무시를 검증한다.
+
 ## 구성
 
 | 경로 | 역할 |
