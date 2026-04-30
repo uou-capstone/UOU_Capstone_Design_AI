@@ -1,4 +1,5 @@
-import { startTransition, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
+import { memo, startTransition, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
+import type { FormEvent } from "react";
 import { Link, useParams } from "react-router-dom";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -6,8 +7,11 @@ import {
   analyzeStudentCompetencyReportStream,
   ClassroomReportAnalysisStage,
   getClassroomReportStudents,
-  getStudentCompetencyReport
+  getStudentCompetencyReport,
+  streamStudentReportChat,
+  StudentReportChatMessageInput
 } from "../api/endpoints";
+import { ApiError } from "../api/client";
 import {
   CompetencyOverallLevel,
   StudentCompetencyReport,
@@ -82,6 +86,14 @@ interface AnalysisProgressState {
   detail?: string;
 }
 
+interface ReportChatMessage {
+  id: string;
+  role: "user" | "assistant";
+  contentMarkdown: string;
+  createdAt: string;
+  streaming?: boolean;
+}
+
 function summarizeStudent(student: StudentReportListItem): string {
   const summary = student.reportSummary;
   if (!summary) return "리포트 없음";
@@ -114,6 +126,33 @@ function StudentStatusMetrics({ student }: { student: StudentReportListItem }) {
   );
 }
 
+const ReportChatMessageView = memo(function ReportChatMessageView({
+  message
+}: {
+  message: ReportChatMessage;
+}) {
+  const content = message.contentMarkdown.trim();
+
+  return (
+    <article className={`report-chat-message ${message.role}`}>
+      <span className="report-chat-message-label">
+        {message.role === "user" ? "교사" : "리포트 챗봇"}
+      </span>
+      {content ? (
+        <div className="report-chat-markdown">
+          <ReactMarkdown remarkPlugins={[remarkGfm]}>{content}</ReactMarkdown>
+        </div>
+      ) : (
+        <p className="report-chat-waiting">
+          {message.streaming ? "답변 생성 중..." : "내용이 없습니다."}
+        </p>
+      )}
+    </article>
+  );
+});
+
+const reportChatDrawerId = "student-report-chat-drawer";
+
 export function ClassroomReportRoute() {
   const { classroomId } = useParams<{ classroomId: string }>();
   const [students, setStudents] = useState<StudentReportListItem[]>([]);
@@ -131,8 +170,18 @@ export function ClassroomReportRoute() {
     label: "",
     thoughtMarkdown: ""
   });
+  const [chatOpen, setChatOpen] = useState(false);
+  const [chatMessages, setChatMessages] = useState<ReportChatMessage[]>([]);
+  const [chatInput, setChatInput] = useState("");
+  const [chatLoading, setChatLoading] = useState(false);
+  const [chatError, setChatError] = useState("");
   const studentsRequestSeq = useRef(0);
   const reportRequestSeq = useRef(0);
+  const chatRequestSeqRef = useRef(0);
+  const chatAbortRef = useRef<AbortController | null>(null);
+  const chatRafRef = useRef<number | null>(null);
+  const chatBottomRef = useRef<HTMLDivElement | null>(null);
+  const chatToggleRef = useRef<HTMLButtonElement | null>(null);
   const deferredThoughtMarkdown = useDeferredValue(analysisProgress.thoughtMarkdown);
 
   const selectedStudent = useMemo(
@@ -146,6 +195,148 @@ export function ClassroomReportRoute() {
     report.studentUserId === selectedStudentId
       ? report
       : null;
+  const canChat = Boolean(classroomId && selectedStudent && visibleReport);
+
+  function cancelPendingChatFrame() {
+    if (chatRafRef.current !== null) {
+      window.cancelAnimationFrame(chatRafRef.current);
+      chatRafRef.current = null;
+    }
+  }
+
+  function resetReportChat() {
+    chatRequestSeqRef.current += 1;
+    chatAbortRef.current?.abort();
+    chatAbortRef.current = null;
+    cancelPendingChatFrame();
+    setChatMessages([]);
+    setChatInput("");
+    setChatError("");
+    setChatLoading(false);
+  }
+
+  function closeReportChat() {
+    setChatOpen(false);
+    window.requestAnimationFrame(() => chatToggleRef.current?.focus());
+  }
+
+  async function sendReportChat(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!classroomId || !selectedStudent || !visibleReport) {
+      setChatError("학생 리포트를 먼저 생성하면 질문할 수 있습니다.");
+      return;
+    }
+
+    const message = chatInput.trim();
+    if (!message || chatLoading) return;
+
+    chatAbortRef.current?.abort();
+    cancelPendingChatFrame();
+    const controller = new AbortController();
+    const requestSeq = chatRequestSeqRef.current + 1;
+    chatRequestSeqRef.current = requestSeq;
+    chatAbortRef.current = controller;
+
+    const createdAt = new Date().toISOString();
+    const userMessage: ReportChatMessage = {
+      id: `report_chat_user_${createdAt}_${chatMessages.length}`,
+      role: "user",
+      contentMarkdown: message,
+      createdAt
+    };
+    const assistantId = `report_chat_assistant_${createdAt}_${chatMessages.length}`;
+    const assistantMessage: ReportChatMessage = {
+      id: assistantId,
+      role: "assistant",
+      contentMarkdown: "",
+      createdAt,
+      streaming: true
+    };
+    const history: StudentReportChatMessageInput[] = chatMessages
+      .filter((item) => item.contentMarkdown.trim())
+      .slice(-8)
+      .map((item) => ({
+        role: item.role,
+        contentMarkdown: item.contentMarkdown
+      }));
+
+    let assistantText = "";
+    const flushAssistantText = () => {
+      chatRafRef.current = null;
+      if (chatRequestSeqRef.current !== requestSeq) return;
+      setChatMessages((prev) =>
+        prev.map((item) =>
+          item.id === assistantId ? { ...item, contentMarkdown: assistantText } : item
+        )
+      );
+    };
+    const scheduleAssistantFlush = () => {
+      if (chatRafRef.current !== null) return;
+      chatRafRef.current = window.requestAnimationFrame(flushAssistantText);
+    };
+
+    setChatInput("");
+    setChatError("");
+    setChatLoading(true);
+    setChatMessages((prev) => [...prev, userMessage, assistantMessage]);
+
+    try {
+      const result = await streamStudentReportChat(
+        classroomId,
+        selectedStudent.id,
+        {
+          message,
+          history
+        },
+        (streamEvent) => {
+          if (chatRequestSeqRef.current !== requestSeq) return;
+          if (streamEvent.type === "answer_delta") {
+            assistantText += streamEvent.text;
+            scheduleAssistantFlush();
+          }
+          if (streamEvent.type === "done" && streamEvent.answerText !== undefined) {
+            assistantText = streamEvent.answerText;
+          }
+        },
+        controller.signal
+      );
+
+      if (chatRequestSeqRef.current !== requestSeq) return;
+      cancelPendingChatFrame();
+      assistantText = result.answerText || assistantText;
+      setChatMessages((prev) =>
+        prev.map((item) =>
+          item.id === assistantId
+            ? { ...item, contentMarkdown: assistantText, streaming: false }
+            : item
+        )
+      );
+    } catch (err) {
+      if (controller.signal.aborted || chatRequestSeqRef.current !== requestSeq) return;
+      cancelPendingChatFrame();
+      const messageText =
+        err instanceof ApiError && err.status === 409
+          ? "학생 리포트를 먼저 생성하면 질문할 수 있습니다."
+          : err instanceof Error
+            ? err.message
+            : "학생 리포트 챗봇 응답을 받지 못했습니다.";
+      setChatError(messageText);
+      setChatMessages((prev) =>
+        prev
+          .map((item) =>
+            item.id === assistantId
+              ? { ...item, contentMarkdown: assistantText, streaming: false }
+              : item
+          )
+          .filter((item) => item.id !== assistantId || item.contentMarkdown.trim())
+      );
+    } finally {
+      if (chatRequestSeqRef.current === requestSeq) {
+        setChatLoading(false);
+        chatAbortRef.current = null;
+      }
+    }
+  }
 
   async function refreshStudents(preferredStudentId = selectedStudentId) {
     if (!classroomId) return;
@@ -300,6 +491,36 @@ export function ClassroomReportRoute() {
     if (!selectedStudentId) return;
     refreshSelectedReport(selectedStudentId).catch(console.error);
   }, [classroomId, selectedStudentId]);
+
+  useEffect(() => {
+    resetReportChat();
+  }, [classroomId, selectedStudentId, visibleReport?.generatedAt]);
+
+  useEffect(
+    () => () => {
+      chatRequestSeqRef.current += 1;
+      chatAbortRef.current?.abort();
+      chatAbortRef.current = null;
+      cancelPendingChatFrame();
+    },
+    []
+  );
+
+  useEffect(() => {
+    if (!chatOpen) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      closeReportChat();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [chatOpen]);
+
+  useEffect(() => {
+    if (!chatOpen) return;
+    chatBottomRef.current?.scrollIntoView({ block: "end" });
+  }, [chatOpen, chatMessages]);
 
   const topCompetencies = useMemo(
     () =>
@@ -716,6 +937,97 @@ export function ClassroomReportRoute() {
             </button>
           </div>
         </section>
+      ) : null}
+
+      <button
+        ref={chatToggleRef}
+        type="button"
+        className={`report-chat-toggle ${chatOpen ? "active" : ""}`}
+        aria-label={chatOpen ? "학생 리포트 챗봇 닫기" : "학생 리포트 챗봇 열기"}
+        aria-expanded={chatOpen}
+        aria-controls={reportChatDrawerId}
+        onClick={() => setChatOpen((prev) => !prev)}
+      >
+        <span className="report-chat-toggle-icon" aria-hidden="true">
+          AI
+        </span>
+      </button>
+
+      {chatOpen ? (
+        <aside
+          id={reportChatDrawerId}
+          className="report-chat-drawer"
+          role="dialog"
+          aria-labelledby="report-chat-title"
+        >
+          <header className="report-chat-header">
+            <div>
+              <h2 id="report-chat-title">리포트 챗봇</h2>
+              <p>
+                {selectedStudent
+                  ? `${selectedStudent.displayName} 학생`
+                  : "학생 선택 필요"}
+              </p>
+            </div>
+            <button
+              type="button"
+              className="report-chat-close"
+              aria-label="학생 리포트 챗봇 닫기"
+              onClick={closeReportChat}
+            >
+              ×
+            </button>
+          </header>
+
+          <div className="report-chat-messages" aria-live="polite">
+            {!selectedStudent ? (
+              <div className="report-chat-empty">학생을 선택하면 대화를 시작할 수 있습니다.</div>
+            ) : !visibleReport ? (
+              <div className="report-chat-empty">
+                {selectedStudent.displayName} 학생의 리포트를 먼저 생성해 주세요.
+              </div>
+            ) : chatMessages.length === 0 ? (
+              <div className="report-chat-empty">
+                {selectedStudent.displayName} 학생에 대한 질문을 기다리고 있습니다.
+              </div>
+            ) : (
+              chatMessages.map((message) => (
+                <ReportChatMessageView key={message.id} message={message} />
+              ))
+            )}
+            <div ref={chatBottomRef} />
+          </div>
+
+          {chatError ? (
+            <div className="report-chat-error" role="alert">
+              {chatError}
+            </div>
+          ) : null}
+
+          <form className="report-chat-form" onSubmit={sendReportChat}>
+            <textarea
+              className="report-chat-input"
+              value={chatInput}
+              onChange={(event) => setChatInput(event.target.value)}
+              rows={3}
+              maxLength={2000}
+              disabled={!canChat || chatLoading}
+              placeholder={
+                canChat
+                  ? `${selectedStudent?.displayName ?? "학생"}에 대해 질문하기`
+                  : "리포트 생성 후 질문할 수 있습니다."
+              }
+              aria-label="학생 리포트 챗봇 질문"
+            />
+            <button
+              type="submit"
+              className="btn report-chat-send"
+              disabled={!canChat || chatLoading || !chatInput.trim()}
+            >
+              {chatLoading ? "응답 중..." : "전송"}
+            </button>
+          </form>
+        </aside>
       ) : null}
     </main>
   );

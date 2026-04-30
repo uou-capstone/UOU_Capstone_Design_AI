@@ -16,6 +16,7 @@ export interface CurrentUser {
   role: UserRole;
   inviteCode: string;
   emailVerified: boolean;
+  hasPassword: boolean;
 }
 
 export interface StudentInviteCandidate {

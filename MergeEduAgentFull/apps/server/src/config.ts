@@ -78,7 +78,7 @@ export const appConfig = {
       : "required",
   requestEncryptionRequiredPaths: (
     process.env.REQUEST_ENCRYPTION_REQUIRED_PATHS ??
-    "/api/auth/signup,/api/auth/register,/api/auth/login,/api/auth/verify-email,/api/auth/resend-verification"
+    "/api/auth/signup,/api/auth/register,/api/auth/login,/api/auth/verify-email,/api/auth/resend-verification,/api/auth/me"
   )
     .split(",")
     .map((item) => item.trim())

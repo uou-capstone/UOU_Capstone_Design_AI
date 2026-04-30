@@ -1,5 +1,6 @@
 import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { AccountProfilePanel } from "../components/account/AccountProfilePanel";
 import { ClassroomCard } from "../components/cards/ClassroomCard";
 import {
   createClassroom,
@@ -102,6 +103,8 @@ export function DashboardRoute() {
           {error}
         </p>
       ) : null}
+
+      <AccountProfilePanel />
 
       <section className="grid cards dashboard-cards">
         {classrooms.map((classroom) => (

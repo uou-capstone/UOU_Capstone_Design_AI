@@ -358,6 +358,12 @@ export class JsonStore {
       const users = await this.listUsers();
       const index = users.findIndex((user) => user.id === userId);
       if (index === -1) return null;
+      if (
+        patch.emailNormalized &&
+        users.some((user) => user.id !== userId && user.emailNormalized === patch.emailNormalized)
+      ) {
+        throw new Error("Email already exists");
+      }
       const updated = {
         ...users[index],
         ...patch,
@@ -414,6 +420,22 @@ export class JsonStore {
           ? {
               ...session,
               revokedAt: now()
+            }
+          : session
+      );
+      await atomicWrite(this.paths.authSessions, next);
+    });
+  }
+
+  async revokeAuthSessionsForUserExcept(userId: string, keepSessionId?: string): Promise<void> {
+    await this.withFileLock(this.paths.authSessions, async () => {
+      const sessions = await readJson<AuthSession[]>(this.paths.authSessions, []);
+      const currentTime = now();
+      const next = sessions.map((session) =>
+        session.userId === userId && session.id !== keepSessionId && !session.revokedAt
+          ? {
+              ...session,
+              revokedAt: currentTime
             }
           : session
       );

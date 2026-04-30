@@ -113,6 +113,11 @@ class AnalyzeStudentReportRequest(BaseModel):
     responseJsonSchema: dict[str, Any]
 
 
+class StudentReportChatRequest(BaseModel):
+    model: str
+    prompt: str
+
+
 app = FastAPI(title="MergeEdu Gemini Bridge", version="1.0.0")
 
 _CACHE_TTL_SECONDS = int(os.getenv("GEMINI_CACHE_TTL_SECONDS", "86400"))
@@ -733,6 +738,20 @@ def analyze_student_report_stream(
             model=request.model,
             prompt=request.prompt,
             response_json_schema=request.responseJsonSchema,
+        ),
+        media_type="application/x-ndjson",
+    )
+
+
+@app.post("/bridge/student_report_chat_stream")
+def student_report_chat_stream(request: StudentReportChatRequest) -> StreamingResponse:
+    client = _get_client()
+
+    return StreamingResponse(
+        _iter_prompt_stream_events(
+            client=client,
+            model=request.model,
+            prompt=request.prompt,
         ),
         media_type="application/x-ndjson",
     )

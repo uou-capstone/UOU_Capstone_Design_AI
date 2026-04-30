@@ -534,4 +534,28 @@ export class GeminiBridgeClient {
       thoughtSummary: streamed.thoughtSummary
     };
   }
+
+  async studentReportChatStream(
+    input: {
+      model: string;
+      prompt: string;
+      signal?: AbortSignal;
+    },
+    onDelta?: (delta: { channel: StreamChannel; text: string }) => void
+  ): Promise<{ markdown: string; thoughtSummary: string; content: BridgeContent | null }> {
+    const { signal, ...payload } = input;
+    const streamed = await this.streamBridge(
+      "student_report_chat_stream",
+      "/bridge/student_report_chat_stream",
+      payload,
+      onDelta,
+      undefined,
+      signal
+    );
+    return {
+      markdown: streamed.answerText || contentToMarkdown(streamed.content),
+      thoughtSummary: streamed.thoughtSummary,
+      content: streamed.content
+    };
+  }
 }

@@ -5,6 +5,7 @@ import {
   logout as logoutRequest,
   resendVerificationEmail as resendVerificationEmailRequest,
   signup as signupRequest,
+  updateAccount as updateAccountRequest,
   verifyEmail as verifyEmailRequest
 } from "../api/endpoints";
 import { CurrentUser, UserRole } from "../types";
@@ -17,6 +18,7 @@ interface AuthContextValue {
   status: AuthStatus;
   user: CurrentUser | null;
   pendingVerificationEmail: string;
+  pendingVerificationDevCode: string;
   setPendingVerificationEmail: (email: string) => void;
   clearPendingVerificationEmail: () => void;
   refreshMe: () => Promise<CurrentUser | null>;
@@ -26,6 +28,11 @@ interface AuthContextValue {
     password: string;
     displayName: string;
     role: UserRole;
+  }) => Promise<{ user: CurrentUser; devVerificationCode?: string }>;
+  updateAccount: (input: {
+    email: string;
+    currentPassword?: string;
+    password?: string;
   }) => Promise<{ user: CurrentUser; devVerificationCode?: string }>;
   resendVerificationEmail: (input: { email: string }) => Promise<{ devVerificationCode?: string }>;
   verifyEmail: (input: { email: string; code: string }) => Promise<CurrentUser>;
@@ -40,6 +47,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [pendingVerificationEmail, setPendingVerificationEmailState] = useState(() =>
     window.localStorage.getItem(pendingEmailKey) ?? ""
   );
+  const [pendingVerificationDevCode, setPendingVerificationDevCode] = useState("");
 
   const setPendingVerificationEmail = useCallback((email: string) => {
     const normalized = email.trim();
@@ -53,6 +61,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const clearPendingVerificationEmail = useCallback(() => {
     setPendingVerificationEmailState("");
+    setPendingVerificationDevCode("");
     window.localStorage.removeItem(pendingEmailKey);
   }, []);
 
@@ -85,6 +94,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       status,
       user,
       pendingVerificationEmail,
+      pendingVerificationDevCode,
       setPendingVerificationEmail,
       clearPendingVerificationEmail,
       refreshMe,
@@ -98,6 +108,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       signup: async (input) => {
         const result = await signupRequest(input);
         setPendingVerificationEmail(result.user.email);
+        setPendingVerificationDevCode(result.devVerificationCode ?? "");
+        return result;
+      },
+      updateAccount: async (input) => {
+        const result = await updateAccountRequest(input);
+        setUser(result.user);
+        if (result.user.emailVerified) {
+          clearPendingVerificationEmail();
+          setStatus("authenticated");
+        } else {
+          setPendingVerificationEmail(result.user.email);
+          setPendingVerificationDevCode(result.devVerificationCode ?? "");
+          setStatus("unverified");
+        }
         return result;
       },
       resendVerificationEmail: async (input) => resendVerificationEmailRequest(input),
@@ -120,6 +144,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }),
     [
       clearPendingVerificationEmail,
+      pendingVerificationDevCode,
       pendingVerificationEmail,
       refreshMe,
       setPendingVerificationEmail,

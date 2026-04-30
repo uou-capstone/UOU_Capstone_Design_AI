@@ -7,7 +7,8 @@ import {
   requireVerifiedEmail
 } from "../middleware/auth.js";
 import {
-  StudentCompetencyReportService
+  StudentCompetencyReportService,
+  sanitizeStudentReportChatHistory
 } from "../services/report/StudentCompetencyReportService.js";
 import { Classroom, User } from "../types/domain.js";
 
@@ -149,6 +150,99 @@ export function classroomsRouter(deps: ServerDeps): Router {
         res.json({ ok: true, data });
       } catch (error) {
         next(error);
+      }
+    }
+  );
+
+  router.post(
+    "/:classroomId/report/students/:studentUserId/chat/stream",
+    requireTeacher,
+    async (req, res, next) => {
+      try {
+        const classroomId = String(req.params.classroomId);
+        const studentUserId = String(req.params.studentUserId);
+        const classroom = await requireClassroomOwner(deps, req, res, classroomId);
+        if (!classroom) return;
+        const student = await requireReportStudent(deps, res, classroom, studentUserId);
+        if (!student) return;
+
+        const message = typeof req.body?.message === "string" ? req.body.message.trim() : "";
+        if (!message) {
+          res.status(400).json({ ok: false, error: "message is required" });
+          return;
+        }
+        if (message.length > 2000) {
+          res.status(400).json({ ok: false, error: "message must be 2000 characters or fewer" });
+          return;
+        }
+
+        const savedReport = await deps.store.getStudentClassroomReport(classroom.id, student.id);
+        if (!savedReport) {
+          res.status(409).json({ ok: false, error: "Generate the selected student's report before chatting" });
+          return;
+        }
+
+        const history = sanitizeStudentReportChatHistory(req.body?.history);
+        const abortController = new AbortController();
+        res.on("close", () => {
+          if (!res.writableEnded) {
+            abortController.abort();
+          }
+        });
+
+        res.setHeader("Content-Type", "application/x-ndjson; charset=utf-8");
+        res.setHeader("Cache-Control", "no-cache, no-transform");
+        res.setHeader("Connection", "keep-alive");
+        if (typeof res.flushHeaders === "function") {
+          res.flushHeaders();
+        }
+
+        const write = (payload: Record<string, unknown>) => {
+          if (!res.destroyed && !res.writableEnded) {
+            res.write(`${JSON.stringify(payload)}\n`);
+          }
+        };
+
+        const data = await reportService.chatAboutStudentReportStream(
+          classroom.id,
+          student.id,
+          {
+            message,
+            history
+          },
+          {
+            signal: abortController.signal,
+            onThoughtDelta: (text) => write({ type: "thought_delta", text }),
+            onAnswerDelta: (text) => write({ type: "answer_delta", text })
+          }
+        );
+
+        if (!data) {
+          write({ type: "error", error: "Student report not found" });
+          res.end();
+          return;
+        }
+
+        write({
+          type: "done",
+          answerText: data.markdown,
+          thoughtSummary: data.thoughtSummary
+        });
+        res.end();
+      } catch (error) {
+        if (!res.headersSent) {
+          next(error);
+          return;
+        }
+        if (!res.destroyed && !res.writableEnded) {
+          res.write(
+            `${JSON.stringify({
+              type: "error",
+              error: error instanceof Error ? error.message : "Unknown student report chat stream error"
+            })}\n`
+          );
+          res.end();
+        }
       }
     }
   );

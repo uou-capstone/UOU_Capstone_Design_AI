@@ -112,6 +112,33 @@ export function authRouter(deps: ServerDeps): Router {
     }
   });
 
+  router.patch("/me", requireAuth, requireVerifiedEmail, async (req, res, next) => {
+    try {
+      const result = await deps.auth.updateAccount({
+        userId: req.authUser!.id,
+        currentSessionId: req.authSession?.id,
+        email: String(req.body?.email ?? ""),
+        currentPassword:
+          req.body?.currentPassword === undefined
+            ? undefined
+            : String(req.body.currentPassword),
+        password:
+          req.body?.password === undefined ? undefined : String(req.body.password)
+      });
+      const payload: Record<string, unknown> = {
+        ok: true,
+        data: { user: result.user }
+      };
+      if (result.devVerificationCode) {
+        payload.devVerificationCode = result.devVerificationCode;
+      }
+      res.json(payload);
+    } catch (error) {
+      if (handleAuthError(res, error)) return;
+      next(error);
+    }
+  });
+
   router.get("/me", requireAuth, (req, res) => {
     res.json({ ok: true, data: { user: publicUser(req.authUser!) } });
   });

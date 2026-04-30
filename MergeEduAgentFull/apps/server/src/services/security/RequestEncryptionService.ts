@@ -66,8 +66,8 @@ export class RequestEncryptionService {
   }
 
   isRequiredPath(originalUrl: string): boolean {
-    const pathname = originalUrl.split("?")[0];
-    return this.requiredPaths.some((requiredPath) => pathname === requiredPath);
+    const pathname = normalizePath(originalUrl.split("?")[0]);
+    return this.requiredPaths.some((requiredPath) => pathname === normalizePath(requiredPath));
   }
 
   decryptEnvelope(envelope: RequestEncryptionEnvelope, method: string, originalUrl: string): unknown {
@@ -129,6 +129,11 @@ export class RequestEncryptionService {
 
 export function buildAad(method: string, originalUrl: string, ts: number, nonce: string): string {
   return `${method.toUpperCase()} ${originalUrl} ${ts} ${nonce}`;
+}
+
+function normalizePath(pathname: string): string {
+  if (pathname.length <= 1) return pathname || "/";
+  return pathname.replace(/\/+$/, "");
 }
 
 function base64UrlDecode(value: string): Buffer {

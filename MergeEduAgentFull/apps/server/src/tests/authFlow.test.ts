@@ -35,6 +35,14 @@ beforeEach(async () => {
     authEmailDeliveryMode: "dev",
     authEmailResendCooldownSeconds: 0,
     requestEncryptionMode: "optional",
+    requestEncryptionRequiredPaths: [
+      "/api/auth/signup",
+      "/api/auth/register",
+      "/api/auth/login",
+      "/api/auth/verify-email",
+      "/api/auth/resend-verification",
+      "/api/auth/me"
+    ],
     googleOAuthClientId: undefined,
     googleOAuthClientSecret: undefined,
     googleOAuthRedirectUri: undefined
@@ -135,7 +143,12 @@ function makeClient(baseUrl: string) {
   };
 }
 
-async function encryptedBody(baseUrl: string, pathname: string, body: unknown) {
+async function encryptedBody(
+  baseUrl: string,
+  pathname: string,
+  body: unknown,
+  method = "POST"
+) {
   const keyResponse = await fetch(`${baseUrl}/crypto/request-key`);
   expect(keyResponse.status).toBe(200);
   const keyPayload = (await keyResponse.json()) as {
@@ -150,7 +163,7 @@ async function encryptedBody(baseUrl: string, pathname: string, body: unknown) {
   const nonce = crypto.randomBytes(16).toString("base64url");
   const originalUrl = `/api${pathname}`;
   const cipher = crypto.createCipheriv("aes-256-gcm", aesKey, iv);
-  cipher.setAAD(Buffer.from(`POST ${originalUrl} ${ts} ${nonce}`));
+  cipher.setAAD(Buffer.from(`${method.toUpperCase()} ${originalUrl} ${ts} ${nonce}`));
   const ciphertext = Buffer.concat([
     cipher.update(JSON.stringify(body), "utf-8"),
     cipher.final(),
@@ -213,6 +226,218 @@ async function signupAndVerify(
 }
 
 describe("auth and role routes", () => {
+  it("updates account email and password, then requires new email verification", async () => {
+    const server = await startTestServer();
+    try {
+      const client = makeClient(server.baseUrl);
+      const oldEmail = "account-update@example.com";
+      const newEmail = "account-updated@example.com";
+      const oldPassword = "password123";
+      const newPassword = "newpassword123";
+      await signupAndVerify(client, {
+        email: oldEmail,
+        displayName: "Account Update",
+        role: "teacher"
+      });
+
+      const update = await client.request("/auth/me", {
+        method: "PATCH",
+        body: JSON.stringify({
+          email: newEmail,
+          currentPassword: oldPassword,
+          password: newPassword
+        })
+      });
+      expect(update.status).toBe(200);
+      const updatePayload = (await update.json()) as {
+        data: { user: { email: string; emailVerified: boolean; hasPassword: boolean } };
+        devVerificationCode: string;
+      };
+      expect(updatePayload.data.user.email).toBe(newEmail);
+      expect(updatePayload.data.user.emailVerified).toBe(false);
+      expect(updatePayload.data.user.hasPassword).toBe(true);
+      expect(updatePayload.devVerificationCode).toMatch(/^\d{6}$/);
+
+      const verify = await client.request("/auth/verify-email", {
+        method: "POST",
+        body: JSON.stringify({
+          email: newEmail,
+          code: updatePayload.devVerificationCode
+        })
+      });
+      expect(verify.status).toBe(200);
+
+      const logout = await client.request("/auth/logout", { method: "POST" });
+      expect(logout.status).toBe(200);
+
+      const oldLogin = await client.request("/auth/login", {
+        method: "POST",
+        body: JSON.stringify({ email: oldEmail, password: oldPassword })
+      });
+      expect(oldLogin.status).toBe(401);
+
+      const wrongPassword = await client.request("/auth/login", {
+        method: "POST",
+        body: JSON.stringify({ email: newEmail, password: oldPassword })
+      });
+      expect(wrongPassword.status).toBe(401);
+
+      const newLogin = await client.request("/auth/login", {
+        method: "POST",
+        body: JSON.stringify({ email: newEmail, password: newPassword })
+      });
+      expect(newLogin.status).toBe(200);
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("rejects duplicate account email, weak password, and wrong current password", async () => {
+    const server = await startTestServer();
+    try {
+      const first = makeClient(server.baseUrl);
+      const second = makeClient(server.baseUrl);
+      await signupAndVerify(first, {
+        email: "first-account@example.com",
+        displayName: "First Account",
+        role: "teacher"
+      });
+      await signupAndVerify(second, {
+        email: "second-account@example.com",
+        displayName: "Second Account",
+        role: "teacher"
+      });
+
+      const duplicate = await first.request("/auth/me", {
+        method: "PATCH",
+        body: JSON.stringify({
+          email: "second-account@example.com",
+          currentPassword: "password123"
+        })
+      });
+      expect(duplicate.status).toBe(409);
+      expect(((await duplicate.json()) as { code: string }).code).toBe("EMAIL_ALREADY_EXISTS");
+
+      const wrongCurrent = await first.request("/auth/me", {
+        method: "PATCH",
+        body: JSON.stringify({
+          email: "first-new@example.com",
+          currentPassword: "wrong-password"
+        })
+      });
+      expect(wrongCurrent.status).toBe(401);
+      expect(((await wrongCurrent.json()) as { code: string }).code).toBe("INVALID_CREDENTIALS");
+
+      const weakPassword = await first.request("/auth/me", {
+        method: "PATCH",
+        body: JSON.stringify({
+          email: "first-account@example.com",
+          currentPassword: "password123",
+          password: "short"
+        })
+      });
+      expect(weakPassword.status).toBe(400);
+      expect(((await weakPassword.json()) as { code: string }).code).toBe("WEAK_PASSWORD");
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("wraps account update duplicate races as EMAIL_ALREADY_EXISTS", async () => {
+    const now = new Date().toISOString();
+    const { passwordHash, passwordSalt } = await new AuthService({} as any).hashPassword("password123");
+    const auth = new AuthService(
+      {
+        getUser: async () => {
+          return {
+            id: "usr_race",
+            email: "race-account@example.com",
+            emailNormalized: "race-account@example.com",
+            displayName: "Race Account",
+            role: "teacher",
+            inviteCode: "1234",
+            passwordHash,
+            passwordSalt,
+            emailVerifiedAt: now,
+            createdAt: now,
+            updatedAt: now
+          };
+        },
+        getUserByEmail: async () => null,
+        updateUser: async () => {
+          throw new Error("Email already exists");
+        }
+      } as any,
+      { emailSender: new DevEmailSender(), codeGenerator: () => "123456" }
+    );
+
+    await expect(
+      auth.updateAccount({
+        userId: "usr_race",
+        email: "race-new@example.com",
+        currentPassword: "password123"
+      })
+    ).rejects.toMatchObject({
+      status: 409,
+      code: "EMAIL_ALREADY_EXISTS"
+    });
+  });
+
+  it("requires encrypted account update bodies when request encryption is required", async () => {
+    const server = await startTestServer();
+    try {
+      const client = makeClient(server.baseUrl);
+      await signupAndVerify(client, {
+        email: "encrypted-account@example.com",
+        displayName: "Encrypted Account",
+        role: "teacher"
+      });
+      Object.assign(appConfig, {
+        requestEncryptionMode: "required",
+        requestEncryptionRequiredPaths: [
+          "/api/auth/signup",
+          "/api/auth/register",
+          "/api/auth/login",
+          "/api/auth/verify-email",
+          "/api/auth/resend-verification",
+          "/api/auth/me"
+        ]
+      });
+
+      const plaintext = await client.request("/auth/me/", {
+        method: "PATCH",
+        body: JSON.stringify({
+          email: "encrypted-account@example.com",
+          currentPassword: "password123",
+          password: "newpassword123"
+        })
+      });
+      expect(plaintext.status).toBe(400);
+      expect(((await plaintext.json()) as { code: string }).code).toBe("REQUEST_ENCRYPTION_REQUIRED");
+
+      const encrypted = await encryptedBody(
+        server.baseUrl,
+        "/auth/me",
+        {
+          email: "encrypted-account@example.com",
+          currentPassword: "password123",
+          password: "newpassword123"
+        },
+        "PATCH"
+      );
+      const update = await client.request("/auth/me", {
+        method: "PATCH",
+        headers: {
+          "x-request-encryption": "req-v1"
+        },
+        body: JSON.stringify(encrypted)
+      });
+      expect(update.status).toBe(200);
+    } finally {
+      await server.close();
+    }
+  });
+
   it("sends verification emails through the injected sender and invalidates old resend codes", async () => {
     const sender = new FakeEmailSender();
     const codes = ["111111", "222222"];

@@ -22,7 +22,9 @@ export function VerifyEmailRoute() {
   );
   const [email, setEmail] = useState(initialEmail);
   const [code, setCode] = useState("");
-  const [devCode] = useState(routeState.devVerificationCode ?? "");
+  const [devCode] = useState(
+    routeState.devVerificationCode || auth.pendingVerificationDevCode || ""
+  );
   const [resendDevCode, setResendDevCode] = useState("");
   const [notice, setNotice] = useState("");
   const [emailStatus, setEmailStatus] = useState<{
@@ -55,7 +57,7 @@ export function VerifyEmailRoute() {
       .catch(() => setEmailStatus(null));
   }, []);
 
-  if (auth.status === "authenticated") {
+  if (auth.status === "authenticated" && !initialEmail) {
     return <Navigate to="/" replace />;
   }
 

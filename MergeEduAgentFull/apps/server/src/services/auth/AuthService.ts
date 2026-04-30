@@ -57,7 +57,8 @@ export function publicUser(user: User): PublicUser {
     displayName: user.displayName,
     role: user.role,
     inviteCode: user.inviteCode,
-    emailVerified: Boolean(user.emailVerifiedAt)
+    emailVerified: Boolean(user.emailVerifiedAt),
+    hasPassword: Boolean(user.passwordHash && user.passwordSalt)
   };
 }
 
@@ -412,6 +413,121 @@ export class AuthService {
       emailVerificationSentAt: undefined
     });
     return updated ?? user;
+  }
+
+  async updateAccount(input: {
+    userId: string;
+    currentSessionId?: string;
+    email: string;
+    currentPassword?: string;
+    password?: string;
+  }): Promise<{ user: PublicUser; devVerificationCode?: string }> {
+    const user = await this.store.getUser(input.userId);
+    if (!user) {
+      throw new AuthError("Authentication required", 401, "AUTH_REQUIRED");
+    }
+    if (!user.emailVerifiedAt) {
+      throw new AuthError("이메일 인증이 필요합니다.", 403, "EMAIL_NOT_VERIFIED");
+    }
+
+    const email = input.email.trim();
+    const emailNormalized = normalizeEmail(email);
+    if (!emailNormalized || !emailNormalized.includes("@")) {
+      throw new AuthError("올바른 이메일을 입력해 주세요.", 400, "INVALID_EMAIL");
+    }
+
+    const emailChanged = emailNormalized !== user.emailNormalized;
+    if (emailChanged && user.googleSub) {
+      throw new AuthError(
+        "Google 계정으로 연결된 이메일은 이 화면에서 변경할 수 없습니다.",
+        400,
+        "GOOGLE_EMAIL_CHANGE_UNSUPPORTED"
+      );
+    }
+
+    const passwordChangeRequested = input.password !== undefined && input.password.length > 0;
+    const hasPassword = Boolean(user.passwordHash && user.passwordSalt);
+    const credentialChangeRequested = emailChanged || passwordChangeRequested;
+    if (hasPassword && credentialChangeRequested) {
+      if (!input.currentPassword || !(await this.verifyPassword(user, input.currentPassword))) {
+        throw new AuthError("현재 비밀번호를 확인해 주세요.", 401, "INVALID_CREDENTIALS");
+      }
+    }
+    if (!hasPassword && emailChanged) {
+      throw new AuthError(
+        "비밀번호가 없는 계정은 먼저 비밀번호를 설정해 주세요.",
+        400,
+        "PASSWORD_REQUIRED_FOR_EMAIL_CHANGE"
+      );
+    }
+    if (passwordChangeRequested && input.password!.length < 8) {
+      throw new AuthError("비밀번호는 8자 이상이어야 합니다.", 400, "WEAK_PASSWORD");
+    }
+
+    if (emailChanged) {
+      const existing = await this.store.getUserByEmail(emailNormalized);
+      if (existing && existing.id !== user.id) {
+        throw new AuthError(EMAIL_ALREADY_EXISTS_MESSAGE, 409, "EMAIL_ALREADY_EXISTS");
+      }
+    }
+
+    const patch: Partial<User> = {};
+    if (email !== user.email) {
+      patch.email = email;
+    }
+    if (emailChanged) {
+      patch.emailNormalized = emailNormalized;
+    }
+
+    let devVerificationCode: string | undefined;
+    if (emailChanged) {
+      const verificationCode = this.createVerificationCode();
+      const expiresAt = new Date(this.deps.clock().getTime() + VERIFY_CODE_TTL_MS).toISOString();
+      await this.ensureEmailSenderReady();
+      await this.sendVerificationEmail({
+        email,
+        displayName: user.displayName,
+        code: verificationCode,
+        expiresAt
+      });
+      patch.emailVerifiedAt = undefined;
+      patch.emailVerificationCodeHash = this.hashVerificationCode(emailNormalized, verificationCode);
+      patch.emailVerificationExpiresAt = expiresAt;
+      patch.emailVerificationAttempts = 0;
+      patch.emailVerificationSentAt = this.now();
+      devVerificationCode = this.shouldExposeDevVerificationCode() ? verificationCode : undefined;
+    }
+
+    if (passwordChangeRequested) {
+      const { passwordHash, passwordSalt } = await this.hashPassword(input.password!);
+      patch.passwordHash = passwordHash;
+      patch.passwordSalt = passwordSalt;
+    }
+
+    if (Object.keys(patch).length === 0) {
+      return { user: publicUser(user) };
+    }
+
+    let updated: User | null;
+    try {
+      updated = await this.store.updateUser(user.id, patch);
+    } catch (error) {
+      if (isDuplicateEmailCreateError(error)) {
+        throw new AuthError(EMAIL_ALREADY_EXISTS_MESSAGE, 409, "EMAIL_ALREADY_EXISTS");
+      }
+      throw error;
+    }
+    if (!updated) {
+      throw new AuthError("Authentication required", 401, "AUTH_REQUIRED");
+    }
+    if (credentialChangeRequested) {
+      await this.store.revokeAuthSessionsForUserExcept(user.id, input.currentSessionId);
+    }
+
+    return {
+      user: publicUser(updated),
+      devVerificationCode
+    };
   }
 
   async loginWithGoogleProfile(input: {

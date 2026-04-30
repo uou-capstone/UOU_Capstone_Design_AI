@@ -30,6 +30,7 @@ export interface PublicUser {
   role: UserRole;
   inviteCode: string;
   emailVerified: boolean;
+  hasPassword: boolean;
 }
 
 export interface AuthSession {

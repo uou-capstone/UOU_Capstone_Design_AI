@@ -75,6 +75,22 @@ export async function getMe(): Promise<CurrentUser | null> {
   }
 }
 
+export async function updateAccount(input: {
+  email: string;
+  currentPassword?: string;
+  password?: string;
+}): Promise<{ user: CurrentUser; devVerificationCode?: string }> {
+  const res = await api.patch<{
+    ok: boolean;
+    data: { user: CurrentUser };
+    devVerificationCode?: string;
+  }>("/auth/me", input);
+  return {
+    user: res.data.data.user,
+    devVerificationCode: res.data.devVerificationCode
+  };
+}
+
 export async function signup(input: {
   email: string;
   password: string;
@@ -382,6 +398,144 @@ export async function analyzeStudentCompetencyReportStream(
 
   if (finalPayload.reportScope !== "STUDENT" || finalPayload.studentUserId !== studentUserId) {
     throw new Error("선택한 학생과 다른 리포트가 반환되어 화면에 반영하지 않았습니다.");
+  }
+
+  return finalPayload;
+}
+
+export type StudentReportChatMessageInput = {
+  role: "user" | "assistant";
+  contentMarkdown: string;
+};
+
+export type StudentReportChatStreamEvent =
+  | {
+      type: "thought_delta";
+      text: string;
+    }
+  | {
+      type: "answer_delta";
+      text: string;
+    }
+  | {
+      type: "done";
+      answerText?: string;
+      thoughtSummary?: string;
+    }
+  | {
+      type: "error";
+      error: string;
+    };
+
+function parseFetchError(text: string, status: number): ApiError {
+  let parsedMessage = "";
+  let parsedCode = "";
+  try {
+    const parsed = JSON.parse(text) as Record<string, unknown>;
+    parsedMessage =
+      (typeof parsed.error === "string" && parsed.error) ||
+      (typeof parsed.detail === "string" && parsed.detail) ||
+      "";
+    parsedCode = typeof parsed.code === "string" ? parsed.code : "";
+  } catch {
+    // keep raw response text fallback
+  }
+  return new ApiError(parsedMessage || text || `HTTP ${status}`, status, parsedCode);
+}
+
+function handleStudentReportChatStreamLine(
+  line: string,
+  onEvent: (event: StudentReportChatStreamEvent) => void
+): { done: boolean; answerText: string; thoughtSummary: string } | null {
+  const payload = JSON.parse(line) as StudentReportChatStreamEvent;
+  if (payload.type === "error") {
+    throw new Error(payload.error || "학생 리포트 챗봇 스트리밍 처리 중 오류가 발생했습니다.");
+  }
+  if (payload.type === "done") {
+    onEvent(payload);
+    return {
+      done: true,
+      answerText: String(payload.answerText ?? ""),
+      thoughtSummary: String(payload.thoughtSummary ?? "")
+    };
+  }
+  if (payload.type === "answer_delta" || payload.type === "thought_delta") {
+    onEvent(payload);
+    return null;
+  }
+  throw new Error("알 수 없는 학생 리포트 챗봇 스트림 이벤트를 받았습니다.");
+}
+
+export async function streamStudentReportChat(
+  classroomId: string,
+  studentUserId: string,
+  input: {
+    message: string;
+    history?: StudentReportChatMessageInput[];
+  },
+  onEvent: (event: StudentReportChatStreamEvent) => void,
+  signal?: AbortSignal
+): Promise<{ answerText: string; thoughtSummary: string }> {
+  const response = await fetch(
+    `/api/classrooms/${classroomId}/report/students/${studentUserId}/chat/stream`,
+    {
+      method: "POST",
+      headers: {
+        "content-type": "application/json"
+      },
+      credentials: "include",
+      signal,
+      body: JSON.stringify(input)
+    }
+  );
+
+  if (!response.ok) {
+    throw parseFetchError(await response.text(), response.status);
+  }
+
+  if (!response.body) {
+    throw new Error("학생 리포트 챗봇 스트리밍 응답 본문이 비어 있습니다.");
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let finalPayload: { answerText: string; thoughtSummary: string } | null = null;
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    let lineEnd = buffer.indexOf("\n");
+    while (lineEnd >= 0) {
+      const line = buffer.slice(0, lineEnd).trim();
+      buffer = buffer.slice(lineEnd + 1);
+      lineEnd = buffer.indexOf("\n");
+      if (!line) continue;
+
+      const handled = handleStudentReportChatStreamLine(line, onEvent);
+      if (handled?.done) {
+        finalPayload = {
+          answerText: handled.answerText,
+          thoughtSummary: handled.thoughtSummary
+        };
+      }
+    }
+  }
+  buffer += decoder.decode();
+  const remainingLine = buffer.trim();
+  if (remainingLine) {
+    const handled = handleStudentReportChatStreamLine(remainingLine, onEvent);
+    if (handled?.done) {
+      finalPayload = {
+        answerText: handled.answerText,
+        thoughtSummary: handled.thoughtSummary
+      };
+    }
+  }
+
+  if (!finalPayload) {
+    throw new Error("학생 리포트 챗봇 스트리밍 최종 결과를 받지 못했습니다.");
   }
 
   return finalPayload;
