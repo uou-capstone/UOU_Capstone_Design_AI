@@ -2,6 +2,10 @@ import { appConfig } from "../../config.js";
 import { QuizJson, QuizQuestion, QuizType } from "../../types/domain.js";
 import { parseQuizJson } from "../llm/JsonSchemaGuards.js";
 import { GeminiBridgeClient } from "../llm/GeminiBridgeClient.js";
+import {
+  QuizQuestionCountMemory,
+  selectQuizQuestionCount
+} from "./QuizQuestionCountPolicy.js";
 
 function normalizeChoice(choice: unknown, index: number): { id: string; textMarkdown: string } {
   if (!choice || typeof choice !== "object") {
@@ -113,60 +117,155 @@ function normalizeQuiz(rawQuiz: QuizJson, fallbackType: QuizType, page: number):
   };
 }
 
+interface QuizGenerationInput {
+  fileRef: { fileName: string; fileUri: string; mimeType: string };
+  page: number;
+  pageText: string;
+  quizType: QuizType;
+  coverageStartPage?: number;
+  coverageEndPage?: number;
+  learnerLevel: string;
+  learnerConfidence?: number;
+  learnerMemoryDigest: string;
+  learnerMemory?: QuizQuestionCountMemory | null;
+  qaThreadDigest?: string;
+  targetDifficulty: "FOUNDATIONAL" | "BALANCED" | "CHALLENGING";
+  sessionId?: string;
+  lectureId?: string;
+}
+
+function trimQuizQuestions(quiz: QuizJson, count: number): QuizJson {
+  if (quiz.questions.length <= count) return quiz;
+  return {
+    ...quiz,
+    questions: quiz.questions.slice(0, count)
+  };
+}
+
+function logQuestionCountDecision(payload: Record<string, unknown>): void {
+  console.info("[quiz_question_count_decision] " + JSON.stringify(payload));
+}
+
+function logQuestionCountMismatch(payload: Record<string, unknown>): void {
+  console.warn("[quiz_question_count_mismatch] " + JSON.stringify(payload));
+}
+
 export class QuizAgents {
   constructor(private readonly bridge: GeminiBridgeClient) {}
 
-  async generate(input: {
-    fileRef: { fileName: string; fileUri: string; mimeType: string };
-    page: number;
-    pageText: string;
-    quizType: QuizType;
-    coverageStartPage?: number;
-    coverageEndPage?: number;
-    learnerLevel: string;
-    learnerMemoryDigest: string;
-    targetDifficulty: "FOUNDATIONAL" | "BALANCED" | "CHALLENGING";
-  }): Promise<QuizJson> {
+  async generate(input: QuizGenerationInput): Promise<QuizJson> {
     const streamed = await this.runStream(input);
     return streamed.quiz;
   }
 
   async runStream(
-    input: {
-      fileRef: { fileName: string; fileUri: string; mimeType: string };
-      page: number;
-      pageText: string;
-      quizType: QuizType;
-      coverageStartPage?: number;
-      coverageEndPage?: number;
-      learnerLevel: string;
-      learnerMemoryDigest: string;
-      targetDifficulty: "FOUNDATIONAL" | "BALANCED" | "CHALLENGING";
-    },
+    input: QuizGenerationInput,
     onDelta?: (delta: { channel: "thought" | "answer"; text: string }) => void,
     signal?: AbortSignal
   ): Promise<{ quiz: QuizJson; thoughtSummary: string }> {
+    const coverageStartPage = input.coverageStartPage ?? 1;
+    const coverageEndPage = input.coverageEndPage ?? input.page;
+    const countDecision = selectQuizQuestionCount({
+      quizType: input.quizType,
+      pageText: input.pageText,
+      coverageStartPage,
+      coverageEndPage,
+      learnerLevel: input.learnerLevel,
+      learnerConfidence: input.learnerConfidence,
+      targetDifficulty: input.targetDifficulty,
+      memory: input.learnerMemory,
+      learnerMemoryDigest: input.learnerMemoryDigest,
+      qaThreadDigest: input.qaThreadDigest
+    });
+    const baseLogPayload = {
+      sessionId: input.sessionId ?? null,
+      lectureId: input.lectureId ?? null,
+      page: input.page,
+      quizType: input.quizType,
+      requestedQuestionCount: countDecision.questionCount,
+      signals: countDecision.signals,
+      rationale: countDecision.rationale,
+      coverageStartPage,
+      coverageEndPage
+    };
+    const request = {
+      model: appConfig.modelName,
+      fileRef: input.fileRef,
+      page: input.page,
+      pageText: input.pageText,
+      quizType: input.quizType,
+      coverageStartPage,
+      coverageEndPage,
+      questionCount: countDecision.questionCount,
+      questionCountRationale: countDecision.rationale,
+      learnerLevel: input.learnerLevel,
+      learnerMemoryDigest: input.learnerMemoryDigest,
+      qaThreadDigest: input.qaThreadDigest,
+      targetDifficulty: input.targetDifficulty
+    };
     const response = await this.bridge.generateQuizStream(
-      {
-        model: appConfig.modelName,
-        fileRef: input.fileRef,
-        page: input.page,
-        pageText: input.pageText,
-        quizType: input.quizType,
-        coverageStartPage: input.coverageStartPage ?? 1,
-        coverageEndPage: input.coverageEndPage ?? input.page,
-        questionCount: 3,
-        learnerLevel: input.learnerLevel,
-        learnerMemoryDigest: input.learnerMemoryDigest,
-        targetDifficulty: input.targetDifficulty
-      },
+      request,
       onDelta,
       signal
     );
 
     const parsed = parseQuizJson(response.quiz);
+    let quiz = normalizeQuiz(parsed, input.quizType, input.page);
+    let retryUsed = false;
+    let rawActualQuestionCount = quiz.questions.length;
+
+    if (rawActualQuestionCount !== countDecision.questionCount) {
+      logQuestionCountMismatch({
+        ...baseLogPayload,
+        actualQuestionCount: rawActualQuestionCount,
+        retryUsed,
+        message: "stream_generation_count_mismatch"
+      });
+    }
+
+    if (rawActualQuestionCount < countDecision.questionCount) {
+      try {
+        retryUsed = true;
+        const retryQuiz = await this.bridge.generateQuiz(request);
+        const retryParsed = parseQuizJson(retryQuiz);
+        quiz = normalizeQuiz(retryParsed, input.quizType, input.page);
+        rawActualQuestionCount = quiz.questions.length;
+        if (rawActualQuestionCount !== countDecision.questionCount) {
+          logQuestionCountMismatch({
+            ...baseLogPayload,
+            actualQuestionCount: rawActualQuestionCount,
+            retryUsed,
+            message: "retry_generation_count_mismatch"
+          });
+        }
+      } catch (error) {
+        if (rawActualQuestionCount < countDecision.minAllowed) {
+          throw error;
+        }
+        logQuestionCountMismatch({
+          ...baseLogPayload,
+          actualQuestionCount: rawActualQuestionCount,
+          retryUsed,
+          message: error instanceof Error ? error.message : "retry_generation_failed"
+        });
+      }
+    }
+
+    if (quiz.questions.length < countDecision.minAllowed) {
+      throw new Error(
+        `Generated quiz has too few questions: ${quiz.questions.length}/${countDecision.minAllowed}`
+      );
+    }
+
+    quiz = trimQuizQuestions(quiz, countDecision.questionCount);
+    logQuestionCountDecision({
+      ...baseLogPayload,
+      actualQuestionCount: quiz.questions.length,
+      retryUsed
+    });
+
     return {
-      quiz: normalizeQuiz(parsed, input.quizType, input.page),
+      quiz,
       thoughtSummary: response.thoughtSummary
     };
   }

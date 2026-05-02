@@ -371,4 +371,58 @@ describe("JsonStore", () => {
     expect(aggregate?.reportScope).toBe("CLASSROOM_AGGREGATE");
     expect(await store.listClassroomReports()).toHaveLength(2);
   });
+
+  it("manages classroom-specific report criteria and removes them with the classroom", async () => {
+    const { JsonStore } = await import("../services/storage/JsonStore.js");
+    const store = new JsonStore();
+    await store.init();
+    await expect(
+      fs.stat(path.join(testDir, "classroom-report-criteria.json"))
+    ).resolves.toBeTruthy();
+
+    const classroomA = await store.createClassroom("A반");
+    const classroomB = await store.createClassroom("B반");
+
+    const criterion = await store.createClassroomReportCriterion(classroomA.id, {
+      name: "발표 논리력",
+      description: "발표 답변에서 근거와 결론이 연결되는지 평가"
+    });
+    await store.createClassroomReportCriterion(classroomB.id, {
+      name: "협업 태도",
+      description: "모둠 활동에서 피드백을 주고받는 흐름"
+    });
+
+    expect(await store.listClassroomReportCriteria(classroomA.id)).toHaveLength(1);
+    expect(await store.listClassroomReportCriteria(classroomB.id)).toHaveLength(1);
+
+    const updated = await store.updateClassroomReportCriterion(classroomA.id, criterion.id, {
+      name: "발표 구조화",
+      description: "주장, 근거, 예시가 순서대로 이어지는지 평가"
+    });
+    expect(updated?.id).toBe(criterion.id);
+    expect(updated?.classroomId).toBe(classroomA.id);
+    expect(updated?.createdAt).toBe(criterion.createdAt);
+    expect(updated?.name).toBe("발표 구조화");
+
+    const reloadedStore = new JsonStore();
+    await reloadedStore.init();
+    const reloadedCriteria = await reloadedStore.listClassroomReportCriteria(classroomA.id);
+    expect(reloadedCriteria).toHaveLength(1);
+    expect(reloadedCriteria[0]?.name).toBe("발표 구조화");
+
+    const crossClassUpdate = await store.updateClassroomReportCriterion(classroomB.id, criterion.id, {
+      name: "다른 반에서 수정",
+      description: "이 값은 A반 항목에 반영되면 안 됩니다."
+    });
+    expect(crossClassUpdate).toBeNull();
+    expect((await store.listClassroomReportCriteria(classroomA.id))[0]?.name).toBe("발표 구조화");
+
+    const crossClassDelete = await store.deleteClassroomReportCriterion(classroomB.id, criterion.id);
+    expect(crossClassDelete).toBe(false);
+    expect(await store.listClassroomReportCriteria(classroomA.id)).toHaveLength(1);
+
+    await store.deleteClassroom(classroomA.id);
+    expect(await store.listClassroomReportCriteria(classroomA.id)).toHaveLength(0);
+    expect(await store.listClassroomReportCriteria(classroomB.id)).toHaveLength(1);
+  });
 });

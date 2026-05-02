@@ -10,18 +10,6 @@ const competencyOverallLevelSchema = z.enum([
 ]);
 const competencyAnalysisStatusSchema = z.enum(["READY", "SPARSE_DATA"]);
 const competencyGenerationModeSchema = z.enum(["AI_ANALYZED", "HEURISTIC_FALLBACK"]);
-const studentCompetencyKeySchema = z.enum([
-  "CONCEPT_UNDERSTANDING",
-  "QUESTION_QUALITY",
-  "PROBLEM_SOLVING",
-  "APPLICATION_TRANSFER",
-  "QUIZ_ACCURACY",
-  "LEARNING_PERSISTENCE",
-  "SELF_REFLECTION",
-  "CLASS_PARTICIPATION",
-  "CONFIDENCE_GROWTH",
-  "IMPROVEMENT_MOMENTUM"
-]);
 const decisionTypeSchema = z.enum([
   "START_EXPLANATION_DECISION",
   "QUIZ_DECISION",
@@ -246,14 +234,14 @@ export const studentCompetencyReportSchema = z.object({
   overallLevel: competencyOverallLevelSchema,
   competencies: z.array(
     z.object({
-      key: studentCompetencyKeySchema,
+      key: z.string().min(1),
       label: z.string(),
       score: z.number().min(0).max(100),
       trend: competencyTrendSchema,
       summary: z.string(),
       evidence: z.array(z.string())
     })
-  ).length(10),
+  ).min(1),
   strengths: z.array(z.string()),
   growthAreas: z.array(z.string()),
   coachingInsights: z.array(z.string()),

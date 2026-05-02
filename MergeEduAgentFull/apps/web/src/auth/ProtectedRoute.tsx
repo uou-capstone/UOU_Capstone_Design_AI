@@ -11,7 +11,18 @@ export function ProtectedRoute() {
   }
 
   if (auth.status === "unverified") {
-    return <Navigate to="/verify-email" replace />;
+    const attemptedPath = `${location.pathname}${location.search}${location.hash}`;
+    const hasMeaningfulNext = attemptedPath && attemptedPath !== "/";
+    const verifyPath = hasMeaningfulNext
+      ? `/verify-email?next=${encodeURIComponent(attemptedPath)}`
+      : "/verify-email";
+    return (
+      <Navigate
+        to={verifyPath}
+        replace
+        state={hasMeaningfulNext ? { next: attemptedPath } : undefined}
+      />
+    );
   }
 
   if (auth.status === "guest") {

@@ -7,6 +7,23 @@ import { AuthLayout } from "../components/auth/AuthLayout";
 interface VerifyRouteState {
   email?: string;
   devVerificationCode?: string;
+  next?: string;
+}
+
+function sanitizeInternalNext(next: string | null | undefined) {
+  if (
+    !next ||
+    !next.startsWith("/") ||
+    next.startsWith("//") ||
+    next.includes("://") ||
+    next.includes("\\")
+  ) {
+    return "/";
+  }
+  if (next.startsWith("/verify-email")) {
+    return "/";
+  }
+  return next;
 }
 
 export function VerifyEmailRoute() {
@@ -19,6 +36,10 @@ export function VerifyEmailRoute() {
   const initialEmail = useMemo(
     () => routeState.email || params.get("email") || auth.pendingVerificationEmail,
     [auth.pendingVerificationEmail, params, routeState.email]
+  );
+  const nextPath = useMemo(
+    () => sanitizeInternalNext(routeState.next || params.get("next")),
+    [params, routeState.next]
   );
   const [email, setEmail] = useState(initialEmail);
   const [code, setCode] = useState("");
@@ -58,7 +79,7 @@ export function VerifyEmailRoute() {
   }, []);
 
   if (auth.status === "authenticated" && !initialEmail) {
-    return <Navigate to="/" replace />;
+    return <Navigate to={nextPath} replace />;
   }
 
   async function onVerify(event: FormEvent) {
@@ -67,7 +88,7 @@ export function VerifyEmailRoute() {
     setError("");
     try {
       await auth.verifyEmail({ email, code });
-      navigate("/", { replace: true });
+      navigate(nextPath, { replace: true });
     } catch (err) {
       setError(err instanceof Error ? err.message : "이메일 인증에 실패했습니다.");
     } finally {

@@ -770,6 +770,227 @@ describe("auth and role routes", () => {
     }
   });
 
+  it("protects classroom report criteria CRUD by teacher ownership", async () => {
+    const server = await startTestServer();
+    try {
+      const teacherA = makeClient(server.baseUrl);
+      const teacherB = makeClient(server.baseUrl);
+      const student = makeClient(server.baseUrl);
+      await signupAndVerify(teacherA, {
+        email: "criteria-teacher-a@example.com",
+        displayName: "Criteria Teacher A",
+        role: "teacher"
+      });
+      await signupAndVerify(teacherB, {
+        email: "criteria-teacher-b@example.com",
+        displayName: "Criteria Teacher B",
+        role: "teacher"
+      });
+      await signupAndVerify(student, {
+        email: "criteria-student@example.com",
+        displayName: "Criteria Student",
+        role: "student"
+      });
+
+      const classroomAResponse = await teacherA.request("/classrooms", {
+        method: "POST",
+        body: JSON.stringify({ title: "A 평가 항목반" })
+      });
+      const classroomBResponse = await teacherB.request("/classrooms", {
+        method: "POST",
+        body: JSON.stringify({ title: "B 평가 항목반" })
+      });
+      const classroomA = (await classroomAResponse.json()) as { data: { id: string } };
+      const classroomB = (await classroomBResponse.json()) as { data: { id: string } };
+
+      const studentList = await student.request(`/classrooms/${classroomA.data.id}/report/criteria`);
+      expect(studentList.status).toBe(403);
+
+      const studentPost = await student.request(`/classrooms/${classroomA.data.id}/report/criteria`, {
+        method: "POST",
+        body: JSON.stringify({
+          name: "학생 추가 시도",
+          description: "학생은 평가 항목을 추가할 수 없어야 합니다."
+        })
+      });
+      expect(studentPost.status).toBe(403);
+
+      const invalid = await teacherA.request(`/classrooms/${classroomA.data.id}/report/criteria`, {
+        method: "POST",
+        body: JSON.stringify({ name: "", description: "" })
+      });
+      expect(invalid.status).toBe(400);
+
+      const overlong = await teacherA.request(`/classrooms/${classroomA.data.id}/report/criteria`, {
+        method: "POST",
+        body: JSON.stringify({
+          name: "x".repeat(61),
+          description: "길이 제한 테스트"
+        })
+      });
+      expect(overlong.status).toBe(400);
+
+      const overlongDescription = await teacherA.request(
+        `/classrooms/${classroomA.data.id}/report/criteria`,
+        {
+          method: "POST",
+          body: JSON.stringify({
+            name: "길이 제한",
+            description: "x".repeat(601)
+          })
+        }
+      );
+      expect(overlongDescription.status).toBe(400);
+
+      const forbiddenPost = await teacherB.request(
+        `/classrooms/${classroomA.data.id}/report/criteria`,
+        {
+          method: "POST",
+          body: JSON.stringify({
+            name: "다른 선생님 항목",
+            description: "소유하지 않은 강의실에는 추가할 수 없어야 합니다."
+          })
+        }
+      );
+      expect(forbiddenPost.status).toBe(403);
+
+      const created = await teacherA.request(`/classrooms/${classroomA.data.id}/report/criteria`, {
+        method: "POST",
+        body: JSON.stringify({
+          name: "  발표 논리력  ",
+          description: "  주장과 근거가 연결되는지 평가  "
+        })
+      });
+      expect(created.status).toBe(201);
+      const createdPayload = (await created.json()) as {
+        data: { id: string; classroomId: string; name: string; description: string };
+      };
+      expect(createdPayload.data.classroomId).toBe(classroomA.data.id);
+      expect(createdPayload.data.name).toBe("발표 논리력");
+      expect(createdPayload.data.description).toBe("주장과 근거가 연결되는지 평가");
+
+      const listA = await teacherA.request(`/classrooms/${classroomA.data.id}/report/criteria`);
+      expect(listA.status).toBe(200);
+      expect(((await listA.json()) as { data: unknown[] }).data).toHaveLength(1);
+
+      const forbiddenForeignClassroom = await teacherB.request(
+        `/classrooms/${classroomA.data.id}/report/criteria`
+      );
+      expect(forbiddenForeignClassroom.status).toBe(403);
+
+      const studentPatch = await student.request(
+        `/classrooms/${classroomA.data.id}/report/criteria/${createdPayload.data.id}`,
+        {
+          method: "PATCH",
+          body: JSON.stringify({ name: "학생 수정 시도" })
+        }
+      );
+      expect(studentPatch.status).toBe(403);
+
+      const studentDelete = await student.request(
+        `/classrooms/${classroomA.data.id}/report/criteria/${createdPayload.data.id}`,
+        { method: "DELETE" }
+      );
+      expect(studentDelete.status).toBe(403);
+
+      const forbiddenPatch = await teacherB.request(
+        `/classrooms/${classroomA.data.id}/report/criteria/${createdPayload.data.id}`,
+        {
+          method: "PATCH",
+          body: JSON.stringify({ name: "권한 없는 수정" })
+        }
+      );
+      expect(forbiddenPatch.status).toBe(403);
+
+      const forbiddenDelete = await teacherB.request(
+        `/classrooms/${classroomA.data.id}/report/criteria/${createdPayload.data.id}`,
+        { method: "DELETE" }
+      );
+      expect(forbiddenDelete.status).toBe(403);
+
+      const crossClassUpdate = await teacherB.request(
+        `/classrooms/${classroomB.data.id}/report/criteria/${createdPayload.data.id}`,
+        {
+          method: "PATCH",
+          body: JSON.stringify({ name: "다른 반 수정" })
+        }
+      );
+      expect(crossClassUpdate.status).toBe(404);
+
+      const emptyPatch = await teacherA.request(
+        `/classrooms/${classroomA.data.id}/report/criteria/${createdPayload.data.id}`,
+        {
+          method: "PATCH",
+          body: JSON.stringify({})
+        }
+      );
+      expect(emptyPatch.status).toBe(400);
+
+      const missingPatch = await teacherA.request(
+        `/classrooms/${classroomA.data.id}/report/criteria/crit_missing`,
+        {
+          method: "PATCH",
+          body: JSON.stringify({ name: "없는 항목" })
+        }
+      );
+      expect(missingPatch.status).toBe(404);
+
+      const overlongPatch = await teacherA.request(
+        `/classrooms/${classroomA.data.id}/report/criteria/${createdPayload.data.id}`,
+        {
+          method: "PATCH",
+          body: JSON.stringify({ description: "x".repeat(601) })
+        }
+      );
+      expect(overlongPatch.status).toBe(400);
+
+      const overlongNamePatch = await teacherA.request(
+        `/classrooms/${classroomA.data.id}/report/criteria/${createdPayload.data.id}`,
+        {
+          method: "PATCH",
+          body: JSON.stringify({ name: "x".repeat(61) })
+        }
+      );
+      expect(overlongNamePatch.status).toBe(400);
+
+      const updated = await teacherA.request(
+        `/classrooms/${classroomA.data.id}/report/criteria/${createdPayload.data.id}`,
+        {
+          method: "PATCH",
+          body: JSON.stringify({
+            name: "  발표 구조화  ",
+            description: "  주장, 근거, 예시가 순서대로 이어지는지 평가  "
+          })
+        }
+      );
+      expect(updated.status).toBe(200);
+      const updatedPayload = (await updated.json()) as {
+        data: { name: string; description: string };
+      };
+      expect(updatedPayload.data.name).toBe("발표 구조화");
+      expect(updatedPayload.data.description).toBe("주장, 근거, 예시가 순서대로 이어지는지 평가");
+
+      const missingDelete = await teacherA.request(
+        `/classrooms/${classroomA.data.id}/report/criteria/crit_missing`,
+        { method: "DELETE" }
+      );
+      expect(missingDelete.status).toBe(404);
+
+      const deleted = await teacherA.request(
+        `/classrooms/${classroomA.data.id}/report/criteria/${createdPayload.data.id}`,
+        { method: "DELETE" }
+      );
+      expect(deleted.status).toBe(200);
+
+      const listAfterDelete = await teacherA.request(
+        `/classrooms/${classroomA.data.id}/report/criteria`
+      );
+      expect(((await listAfterDelete.json()) as { data: unknown[] }).data).toHaveLength(0);
+    } finally {
+      await server.close();
+    }
+  });
+
   it("re-checks enrollment before existing session writes and keeps student reads side-effect free", async () => {
     const server = await startTestServer();
     try {

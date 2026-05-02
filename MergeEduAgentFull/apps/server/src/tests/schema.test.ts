@@ -149,4 +149,62 @@ describe("schema guards", () => {
     });
     expect(result.competencies).toHaveLength(10);
   });
+
+  it("parses student competency reports with custom criteria", () => {
+    const result = parseStudentCompetencyReport({
+      schemaVersion: "1.0",
+      classroomId: "cls_1",
+      classroomTitle: "수학",
+      studentLabel: "현재 학습자",
+      generatedAt: new Date().toISOString(),
+      analysisStatus: "READY",
+      generationMode: "AI_ANALYZED",
+      headline: "성장 중입니다.",
+      summaryMarkdown: "- 요약",
+      overallScore: 74,
+      overallLevel: "PROFICIENT",
+      competencies: [
+        {
+          key: "CONCEPT_UNDERSTANDING",
+          label: "개념 이해도",
+          score: 70,
+          trend: "STEADY",
+          summary: "요약",
+          evidence: ["근거"]
+        },
+        {
+          key: "CUSTOM_crit_present_logic",
+          label: "발표 논리력",
+          score: 68,
+          trend: "UP",
+          summary: "주장과 근거를 연결해 설명하려는 흐름이 보입니다.",
+          evidence: ["발표형 질문 1건"]
+        }
+      ],
+      strengths: ["강점"],
+      growthAreas: ["보완점"],
+      coachingInsights: ["인사이트"],
+      recommendedActions: [
+        {
+          title: "복습",
+          description: "짧게 반복"
+        }
+      ],
+      lectureInsights: [],
+      sourceStats: {
+        lectureCount: 1,
+        sessionCount: 1,
+        completedPageCount: 3,
+        pageCoverageRatio: 0.5,
+        questionCount: 2,
+        quizCount: 1,
+        gradedQuizCount: 1,
+        averageQuizScore: 80,
+        feedbackCount: 1,
+        memoryRefreshCount: 1
+      },
+      dataQualityNote: "충분한 데이터"
+    });
+    expect(result.competencies.map((item) => item.key)).toContain("CUSTOM_crit_present_logic");
+  });
 });

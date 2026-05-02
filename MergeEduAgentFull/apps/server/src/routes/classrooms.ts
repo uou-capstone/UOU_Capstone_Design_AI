@@ -18,6 +18,39 @@ function maskEmail(email: string): string {
   return `${name.slice(0, 2)}***@${domain}`;
 }
 
+function parseCriterionInput(
+  body: unknown,
+  options: { partial?: boolean } = {}
+): { name?: string; description?: string; error?: string } {
+  const candidate = body && typeof body === "object" ? (body as Record<string, unknown>) : {};
+  const nameProvided = Object.prototype.hasOwnProperty.call(candidate, "name");
+  const descriptionProvided = Object.prototype.hasOwnProperty.call(candidate, "description");
+  const name = nameProvided && typeof candidate.name === "string" ? candidate.name.trim() : "";
+  const description =
+    descriptionProvided && typeof candidate.description === "string"
+      ? candidate.description.trim()
+      : "";
+
+  if (!options.partial || nameProvided) {
+    if (!name) return { error: "항목 이름을 입력해 주세요." };
+    if (name.length > 60) return { error: "항목 이름은 60자 이하로 입력해 주세요." };
+  }
+  if (!options.partial || descriptionProvided) {
+    if (!description) return { error: "항목 설명을 입력해 주세요." };
+    if (description.length > 600) {
+      return { error: "항목 설명은 600자 이하로 입력해 주세요." };
+    }
+  }
+  if (options.partial && !nameProvided && !descriptionProvided) {
+    return { error: "수정할 항목 이름 또는 설명을 입력해 주세요." };
+  }
+
+  return {
+    ...(nameProvided ? { name } : {}),
+    ...(descriptionProvided ? { description } : {})
+  };
+}
+
 async function requireReportStudent(
   deps: ServerDeps,
   res: Response,
@@ -87,6 +120,96 @@ export function classroomsRouter(deps: ServerDeps): Router {
       next(error);
     }
   });
+
+  router.get("/:classroomId/report/criteria", requireTeacher, async (req, res, next) => {
+    try {
+      const classroom = await requireClassroomOwner(deps, req, res, String(req.params.classroomId));
+      if (!classroom) return;
+      const data = await deps.store.listClassroomReportCriteria(classroom.id);
+      res.json({ ok: true, data });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  router.post("/:classroomId/report/criteria", requireTeacher, async (req, res, next) => {
+    try {
+      const classroom = await requireClassroomOwner(deps, req, res, String(req.params.classroomId));
+      if (!classroom) return;
+      const parsed = parseCriterionInput(req.body);
+      if (parsed.error || !parsed.name || !parsed.description) {
+        res.status(400).json({ ok: false, error: parsed.error ?? "Invalid criterion input" });
+        return;
+      }
+      const data = await deps.store.createClassroomReportCriterion(classroom.id, {
+        name: parsed.name,
+        description: parsed.description
+      });
+      res.status(201).json({ ok: true, data });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  router.patch(
+    "/:classroomId/report/criteria/:criterionId",
+    requireTeacher,
+    async (req, res, next) => {
+      try {
+        const classroom = await requireClassroomOwner(
+          deps,
+          req,
+          res,
+          String(req.params.classroomId)
+        );
+        if (!classroom) return;
+        const parsed = parseCriterionInput(req.body, { partial: true });
+        if (parsed.error) {
+          res.status(400).json({ ok: false, error: parsed.error });
+          return;
+        }
+        const data = await deps.store.updateClassroomReportCriterion(
+          classroom.id,
+          String(req.params.criterionId),
+          parsed
+        );
+        if (!data) {
+          res.status(404).json({ ok: false, error: "Report criterion not found" });
+          return;
+        }
+        res.json({ ok: true, data });
+      } catch (error) {
+        next(error);
+      }
+    }
+  );
+
+  router.delete(
+    "/:classroomId/report/criteria/:criterionId",
+    requireTeacher,
+    async (req, res, next) => {
+      try {
+        const classroom = await requireClassroomOwner(
+          deps,
+          req,
+          res,
+          String(req.params.classroomId)
+        );
+        if (!classroom) return;
+        const deleted = await deps.store.deleteClassroomReportCriterion(
+          classroom.id,
+          String(req.params.criterionId)
+        );
+        if (!deleted) {
+          res.status(404).json({ ok: false, error: "Report criterion not found" });
+          return;
+        }
+        res.json({ ok: true });
+      } catch (error) {
+        next(error);
+      }
+    }
+  );
 
   router.get("/:classroomId/report/students", requireTeacher, async (req, res, next) => {
     try {
@@ -258,6 +381,12 @@ export function classroomsRouter(deps: ServerDeps): Router {
         if (!classroom) return;
         const student = await requireReportStudent(deps, res, classroom, studentUserId);
         if (!student) return;
+        const abortController = new AbortController();
+        res.on("close", () => {
+          if (!res.writableEnded) {
+            abortController.abort();
+          }
+        });
         res.setHeader("Content-Type", "application/x-ndjson; charset=utf-8");
         res.setHeader("Cache-Control", "no-cache, no-transform");
         res.setHeader("Connection", "keep-alive");
@@ -275,6 +404,7 @@ export function classroomsRouter(deps: ServerDeps): Router {
           classroom.id,
           studentUserId,
           {
+            signal: abortController.signal,
             onStage: (event) => write({ type: "stage", ...event }),
             onThoughtDelta: (text) => write({ type: "thought_delta", text }),
             onAnswerDelta: (text) => write({ type: "answer_delta", text })
@@ -297,13 +427,15 @@ export function classroomsRouter(deps: ServerDeps): Router {
           next(error);
           return;
         }
-        res.write(
-          `${JSON.stringify({
-            type: "error",
-            error: error instanceof Error ? error.message : "Unknown student report stream error"
-          })}\n`
-        );
-        res.end();
+        if (!res.destroyed && !res.writableEnded) {
+          res.write(
+            `${JSON.stringify({
+              type: "error",
+              error: error instanceof Error ? error.message : "Unknown student report stream error"
+            })}\n`
+          );
+          res.end();
+        }
       }
     }
   );
@@ -329,6 +461,12 @@ export function classroomsRouter(deps: ServerDeps): Router {
       const classroomId = String(req.params.classroomId);
       const classroom = await requireClassroomOwner(deps, req, res, classroomId);
       if (!classroom) return;
+      const abortController = new AbortController();
+      res.on("close", () => {
+        if (!res.writableEnded) {
+          abortController.abort();
+        }
+      });
       res.setHeader("Content-Type", "application/x-ndjson; charset=utf-8");
       res.setHeader("Cache-Control", "no-cache, no-transform");
       res.setHeader("Connection", "keep-alive");
@@ -337,12 +475,15 @@ export function classroomsRouter(deps: ServerDeps): Router {
       }
 
       const write = (payload: Record<string, unknown>) => {
-        res.write(`${JSON.stringify(payload)}\n`);
+        if (!res.destroyed && !res.writableEnded) {
+          res.write(`${JSON.stringify(payload)}\n`);
+        }
       };
 
       const data = await reportService.analyzeAndSaveClassroomReportStream(
         classroomId,
         {
+          signal: abortController.signal,
           onStage: (event) => write({ type: "stage", ...event }),
           onThoughtDelta: (text) => write({ type: "thought_delta", text }),
           onAnswerDelta: (text) => write({ type: "answer_delta", text })
@@ -365,13 +506,15 @@ export function classroomsRouter(deps: ServerDeps): Router {
         next(error);
         return;
       }
-      res.write(
-        `${JSON.stringify({
-          type: "error",
-          error: error instanceof Error ? error.message : "Unknown report stream error"
-        })}\n`
-      );
-      res.end();
+      if (!res.destroyed && !res.writableEnded) {
+        res.write(
+          `${JSON.stringify({
+            type: "error",
+            error: error instanceof Error ? error.message : "Unknown report stream error"
+          })}\n`
+        );
+        res.end();
+      }
     }
   });
 

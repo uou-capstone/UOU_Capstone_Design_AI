@@ -7,6 +7,19 @@ import { AuthLayout } from "../components/auth/AuthLayout";
 import { RoleSegmentedControl } from "../components/auth/RoleSegmentedControl";
 import { UserRole } from "../types";
 
+function sanitizeInternalNext(next: string | null) {
+  if (
+    !next ||
+    !next.startsWith("/") ||
+    next.startsWith("//") ||
+    next.includes("://") ||
+    next.includes("\\")
+  ) {
+    return "/";
+  }
+  return next;
+}
+
 export function LoginRoute() {
   const auth = useAuth();
   const navigate = useNavigate();
@@ -17,6 +30,7 @@ export function LoginRoute() {
   const [googleEnabled, setGoogleEnabled] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const nextPath = sanitizeInternalNext(params.get("next"));
 
   useEffect(() => {
     getGoogleOAuthStatus()
@@ -25,7 +39,7 @@ export function LoginRoute() {
   }, []);
 
   if (auth.status === "authenticated") {
-    return <Navigate to={params.get("next") || "/"} replace />;
+    return <Navigate to={nextPath} replace />;
   }
 
   async function onSubmit(event: FormEvent) {
@@ -34,11 +48,18 @@ export function LoginRoute() {
     setError("");
     try {
       await auth.login({ email, password });
-      navigate(params.get("next") || "/", { replace: true });
+      navigate(nextPath, { replace: true });
     } catch (err) {
       if (err instanceof ApiError && err.code === "EMAIL_NOT_VERIFIED") {
         auth.setPendingVerificationEmail(email);
-        navigate(`/verify-email?email=${encodeURIComponent(email)}`, { replace: true });
+        const verifyParams = new URLSearchParams({ email });
+        if (nextPath !== "/") {
+          verifyParams.set("next", nextPath);
+        }
+        navigate(`/verify-email?${verifyParams.toString()}`, {
+          replace: true,
+          state: nextPath !== "/" ? { email, next: nextPath } : { email }
+        });
         return;
       }
       setError(err instanceof Error ? err.message : "로그인에 실패했습니다.");

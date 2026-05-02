@@ -15,6 +15,29 @@ import { InviteStudentPanel } from "../components/classrooms/InviteStudentPanel"
 import { LectureUploaderModal } from "../components/lectures/LectureUploaderModal";
 import { LectureItem, Week } from "../types";
 
+type ClassroomSection = "invite" | "weeks" | "report";
+
+const TEACHER_SECTIONS: ClassroomSection[] = ["invite", "weeks", "report"];
+const STUDENT_SECTIONS: ClassroomSection[] = ["weeks"];
+
+const CLASSROOM_SECTION_META: Record<ClassroomSection, {
+  label: string;
+  description: string;
+}> = {
+  invite: {
+    label: "학생 초대",
+    description: "학생을 검색하고 참여 명단을 관리합니다."
+  },
+  weeks: {
+    label: "주차 관리",
+    description: "주차별 PDF 자료와 학습 세션을 관리합니다."
+  },
+  report: {
+    label: "학생 리포트",
+    description: "학습 기록을 바탕으로 리포트 분석 화면으로 이동합니다."
+  }
+};
+
 export function ClassroomRoute() {
   const { classroomId } = useParams<{ classroomId: string }>();
   const { user, refreshMe } = useAuth();
@@ -30,6 +53,7 @@ export function ClassroomRoute() {
   const [lecturesByWeek, setLecturesByWeek] = useState<Record<string, LectureItem[]>>({});
   const [openUploaderForWeek, setOpenUploaderForWeek] = useState<string | null>(null);
   const [openWeekMenuId, setOpenWeekMenuId] = useState<string | null>(null);
+  const [activeSection, setActiveSection] = useState<ClassroomSection | null>(null);
 
   const canBulkDelete = useMemo(
     () => selectionMode && selectedWeeks.length > 0,
@@ -102,6 +126,28 @@ export function ClassroomRoute() {
     }
   }, [weeks, expandedWeek, openWeekMenuId]);
 
+  useEffect(() => {
+    if (!user?.role) return;
+    setActiveSection((prev) => {
+      if (user.role !== "teacher") return "weeks";
+      return prev ?? "invite";
+    });
+  }, [user?.role]);
+
+  useEffect(() => {
+    if (activeSection === "report" && !classroomId) {
+      setActiveSection("weeks");
+    }
+  }, [activeSection, classroomId]);
+
+  useEffect(() => {
+    if (!activeSection) return;
+    setOpenWeekMenuId(null);
+    if (activeSection !== "weeks") {
+      setOpenUploaderForWeek(null);
+    }
+  }, [activeSection]);
+
   async function loadLectures(weekId: string) {
     const lectures = await getLectures(weekId);
     setLecturesByWeek((prev) => ({ ...prev, [weekId]: lectures }));
@@ -109,6 +155,7 @@ export function ClassroomRoute() {
 
   async function onAddWeek() {
     if (!classroomId || !isTeacher) return;
+    setActiveSection("weeks");
     await createWeek(classroomId);
     await refreshWeeks();
   }
@@ -132,6 +179,7 @@ export function ClassroomRoute() {
 
   function enterSelectionMode() {
     if (!isTeacher) return;
+    setActiveSection("weeks");
     setSelectionMode(true);
     setSelectedWeeks([]);
     setOpenWeekMenuId(null);
@@ -169,8 +217,16 @@ export function ClassroomRoute() {
     await loadLectures(weekId);
   }
 
+  function selectSection(section: ClassroomSection) {
+    if (!isTeacher && section !== "weeks") return;
+    setActiveSection(section);
+  }
+
   const canRenderClassroomTools = !loading && !loadError;
   const teacherSelectionMode = Boolean(isTeacher && selectionMode);
+  const visibleSections = isTeacher ? TEACHER_SECTIONS : STUDENT_SECTIONS;
+  const currentSection = activeSection ?? (isTeacher ? "invite" : "weeks");
+  const loadedLectureCount = Object.values(lecturesByWeek).flat().length;
 
   return (
     <main className="page-shell" onClick={() => setOpenWeekMenuId(null)}>
@@ -188,37 +244,9 @@ export function ClassroomRoute() {
             <small>주차</small>
           </span>
           <span>
-            <strong>{Object.values(lecturesByWeek).flat().length}</strong>
+            <strong>{loadedLectureCount}</strong>
             <small>불러온 자료</small>
           </span>
-        </div>
-        <div className="heading-actions classroom-actions">
-          {canRenderClassroomTools && classroomId && isTeacher ? (
-            <Link className="btn ghost" to={`/classrooms/${classroomId}/report`}>
-              학생 리포트 보기
-            </Link>
-          ) : null}
-          {canRenderClassroomTools && isTeacher ? (
-            <>
-              <button className="btn" onClick={onAddWeek}>
-                + 주차 추가
-              </button>
-              {!selectionMode ? (
-                <button className="btn danger" onClick={enterSelectionMode}>
-                  선택 주차 삭제
-                </button>
-              ) : (
-                <>
-                  <button className="btn ghost" onClick={exitSelectionMode}>
-                    선택 취소
-                  </button>
-                  <button className="btn danger" onClick={onBulkDelete} disabled={!canBulkDelete}>
-                    삭제 실행 ({selectedWeeks.length})
-                  </button>
-                </>
-              )}
-            </>
-          ) : null}
         </div>
       </section>
 
@@ -232,130 +260,220 @@ export function ClassroomRoute() {
         </section>
       ) : null}
 
-      {canRenderClassroomTools && teacherSelectionMode ? (
-        <section className="card selection-mode-banner">
-          <strong>선택 삭제 모드</strong>
-          <p className="page-subtitle">
-            삭제할 주차를 체크한 뒤, 우측 상단의 <b>삭제 실행</b>을 눌러주세요.
-          </p>
-        </section>
-      ) : null}
-
-      {canRenderClassroomTools && classroomId && isTeacher ? (
-        <InviteStudentPanel classroomId={classroomId} isTeacher={isTeacher} />
-      ) : null}
-
       {canRenderClassroomTools ? (
-      <section className="week-timeline">
-        {weeks.length === 0 ? (
-          <section className="card empty-state">
-            {isTeacher
-              ? "아직 주차가 없습니다. 주차 추가 버튼으로 첫 수업 흐름을 만들어 보세요."
-              : "아직 등록된 주차가 없습니다."}
-          </section>
-        ) : null}
-        {weeks.map((week) => (
-          <article key={week.id} className="card week-card">
-            <div className="week-marker" aria-hidden="true" />
-            <div className="week-row-glass">
-              <div className="week-row-main">
-                {teacherSelectionMode ? (
-                  <label className="week-select-hit">
-                    <input
-                      className="week-select-box"
-                      type="checkbox"
-                      checked={selectedWeeks.includes(week.id)}
-                      aria-label={`${week.title} 선택`}
-                      onChange={() => toggleSelection(week.id)}
-                      onClick={(event) => event.stopPropagation()}
-                    />
-                  </label>
-                ) : null}
+        <section className="classroom-workspace">
+          <nav className="card classroom-section-nav" data-testid="classroom-section-nav" aria-label="강의실 메뉴">
+            {visibleSections.map((section) => {
+              const active = currentSection === section;
+              const testId = `classroom-nav-${section}`;
+              return (
                 <button
-                  className="week-open-btn"
-                  aria-expanded={expandedWeek === week.id}
-                  aria-controls={`week-detail-${week.id}`}
-                  onClick={() => toggleExpand(week.id)}
-                >
-                  {week.title}
-                </button>
-              </div>
-
-              {isTeacher ? (
-                <div className="week-menu-anchor" onClick={(event) => event.stopPropagation()}>
-                <button
+                  key={section}
                   type="button"
-                  className="icon-menu-btn"
-                  aria-label="주차 메뉴"
-                  aria-expanded={openWeekMenuId === week.id}
-                  onClick={() =>
-                    setOpenWeekMenuId((prev) => (prev === week.id ? null : week.id))
-                  }
+                  className={`classroom-section-nav-btn${active ? " active" : ""}`}
+                  data-testid={testId}
+                  aria-current={active ? "page" : undefined}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    selectSection(section);
+                  }}
                 >
-                  ...
+                  <span>{CLASSROOM_SECTION_META[section].label}</span>
+                  <small>
+                    {section === "weeks"
+                      ? `${weeks.length}주차`
+                      : CLASSROOM_SECTION_META[section].description}
+                  </small>
                 </button>
-                {openWeekMenuId === week.id ? (
-                  <div className="floating-menu card">
-                    <button className="menu-danger-btn" onClick={() => onDeleteWeek(week.id)}>
-                      주차 삭제
-                    </button>
-                  </div>
-                ) : null}
-                </div>
-              ) : null}
-            </div>
+              );
+            })}
+          </nav>
 
-            {expandedWeek === week.id ? (
-              <div className="week-detail-panel" id={`week-detail-${week.id}`}>
-                <div className="toolbar classroom-content-head">
-                  <strong>세부 강의</strong>
-                  {isTeacher ? (
-                    <button className="btn" onClick={() => setOpenUploaderForWeek(week.id)}>
-                      세부 강의 추가
-                    </button>
-                  ) : null}
-                </div>
-                <div className="grid lecture-list">
-                  {(lecturesByWeek[week.id] ?? []).length === 0 ? (
-                    <section className="lecture-empty-state">
-                      {isTeacher
-                        ? "아직 세부 강의가 없습니다. 세부 강의 추가로 PDF 자료를 올려주세요."
-                        : "아직 등록된 강의가 없습니다."}
-                    </section>
-                  ) : null}
-                  {(lecturesByWeek[week.id] ?? []).map((lecture) => (
-                    <div key={lecture.id} className="lecture-row">
-                      <div className="lecture-main">
-                        <div className="lecture-title">{lecture.title}</div>
-                        <small className="lecture-meta">{lecture.pdf.numPages} pages</small>
-                      </div>
-                      <div className="lecture-actions">
-                        <Link className="btn" to={`/session/${lecture.id}`}>
-                          학습 시작
-                        </Link>
-                        {isTeacher ? (
-                          <button
-                            className="btn danger"
-                            onClick={() => onDeleteLecture(week.id, lecture.id)}
-                          >
-                            삭제
-                          </button>
-                        ) : null}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
+          <section className="classroom-section-panel" data-testid="classroom-section-panel">
+            {currentSection === "invite" && classroomId && isTeacher ? (
+              <InviteStudentPanel classroomId={classroomId} isTeacher={isTeacher} />
             ) : null}
 
-            <LectureUploaderModal
-              open={openUploaderForWeek === week.id}
-              onClose={() => setOpenUploaderForWeek(null)}
-              onSubmit={(payload) => onUploadLecture(week.id, payload)}
-            />
-          </article>
-        ))}
-      </section>
+            {currentSection === "weeks" ? (
+              <section className="classroom-weeks-section" data-testid="classroom-weeks-section">
+                <div className="classroom-section-head">
+                  <div>
+                    <span className="eyebrow">WEEK MANAGEMENT</span>
+                    <h2>주차 관리</h2>
+                    <p>주차별 세부 강의와 PDF 자료를 이곳에서 정리합니다.</p>
+                  </div>
+                  {isTeacher ? (
+                    <div className="heading-actions classroom-actions">
+                      <button className="btn" onClick={onAddWeek}>
+                        + 주차 추가
+                      </button>
+                      {!selectionMode ? (
+                        <button className="btn danger" onClick={enterSelectionMode}>
+                          선택 주차 삭제
+                        </button>
+                      ) : (
+                        <>
+                          <button className="btn ghost" onClick={exitSelectionMode}>
+                            선택 취소
+                          </button>
+                          <button className="btn danger" onClick={onBulkDelete} disabled={!canBulkDelete}>
+                            삭제 실행 ({selectedWeeks.length})
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  ) : null}
+                </div>
+
+                {teacherSelectionMode ? (
+                  <section className="card selection-mode-banner" data-testid="classroom-selection-banner">
+                    <strong>선택 삭제 모드</strong>
+                    <p className="page-subtitle">
+                      삭제할 주차를 체크한 뒤, 우측 상단의 <b>삭제 실행</b>을 눌러주세요.
+                    </p>
+                  </section>
+                ) : null}
+
+                <section className="week-timeline" data-testid="classroom-week-timeline">
+                  {weeks.length === 0 ? (
+                    <section className="card empty-state">
+                      {isTeacher
+                        ? "아직 주차가 없습니다. 주차 추가 버튼으로 첫 수업 흐름을 만들어 보세요."
+                        : "아직 등록된 주차가 없습니다."}
+                    </section>
+                  ) : null}
+                  {weeks.map((week) => (
+                    <article key={week.id} className="card week-card">
+                      <div className="week-marker" aria-hidden="true" />
+                      <div className="week-row-glass">
+                        <div className="week-row-main">
+                          {teacherSelectionMode ? (
+                            <label className="week-select-hit">
+                              <input
+                                className="week-select-box"
+                                type="checkbox"
+                                checked={selectedWeeks.includes(week.id)}
+                                aria-label={`${week.title} 선택`}
+                                onChange={() => toggleSelection(week.id)}
+                                onClick={(event) => event.stopPropagation()}
+                              />
+                            </label>
+                          ) : null}
+                          <button
+                            className="week-open-btn"
+                            aria-expanded={expandedWeek === week.id}
+                            aria-controls={`week-detail-${week.id}`}
+                            onClick={() => toggleExpand(week.id)}
+                          >
+                            {week.title}
+                          </button>
+                        </div>
+
+                        {isTeacher ? (
+                          <div className="week-menu-anchor" onClick={(event) => event.stopPropagation()}>
+                            <button
+                              type="button"
+                              className="icon-menu-btn"
+                              data-testid="classroom-week-menu-trigger"
+                              aria-label="주차 메뉴"
+                              aria-expanded={openWeekMenuId === week.id}
+                              onClick={() =>
+                                setOpenWeekMenuId((prev) => (prev === week.id ? null : week.id))
+                              }
+                            >
+                              ...
+                            </button>
+                            {openWeekMenuId === week.id ? (
+                              <div className="floating-menu card" data-testid="classroom-week-menu">
+                                <button className="menu-danger-btn" onClick={() => onDeleteWeek(week.id)}>
+                                  주차 삭제
+                                </button>
+                              </div>
+                            ) : null}
+                          </div>
+                        ) : null}
+                      </div>
+
+                      {expandedWeek === week.id ? (
+                        <div className="week-detail-panel" id={`week-detail-${week.id}`}>
+                          <div className="toolbar classroom-content-head">
+                            <strong>세부 강의</strong>
+                            {isTeacher ? (
+                              <button className="btn" onClick={() => setOpenUploaderForWeek(week.id)}>
+                                세부 강의 추가
+                              </button>
+                            ) : null}
+                          </div>
+                          <div className="grid lecture-list">
+                            {(lecturesByWeek[week.id] ?? []).length === 0 ? (
+                              <section className="lecture-empty-state">
+                                {isTeacher
+                                  ? "아직 세부 강의가 없습니다. 세부 강의 추가로 PDF 자료를 올려주세요."
+                                  : "아직 등록된 강의가 없습니다."}
+                              </section>
+                            ) : null}
+                            {(lecturesByWeek[week.id] ?? []).map((lecture) => (
+                              <div key={lecture.id} className="lecture-row">
+                                <div className="lecture-main">
+                                  <div className="lecture-title">{lecture.title}</div>
+                                  <small className="lecture-meta">{lecture.pdf.numPages} pages</small>
+                                </div>
+                                <div className="lecture-actions">
+                                  <Link className="btn" to={`/session/${lecture.id}`}>
+                                    학습 시작
+                                  </Link>
+                                  {isTeacher ? (
+                                    <button
+                                      className="btn danger"
+                                      onClick={() => onDeleteLecture(week.id, lecture.id)}
+                                    >
+                                      삭제
+                                    </button>
+                                  ) : null}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      ) : null}
+
+                      <LectureUploaderModal
+                        open={openUploaderForWeek === week.id}
+                        onClose={() => setOpenUploaderForWeek(null)}
+                        onSubmit={(payload) => onUploadLecture(week.id, payload)}
+                      />
+                    </article>
+                  ))}
+                </section>
+              </section>
+            ) : null}
+
+            {currentSection === "report" && classroomId && isTeacher ? (
+              <section className="classroom-report-entry" data-testid="classroom-report-entry">
+                <div className="classroom-section-head">
+                  <div>
+                    <span className="eyebrow">REPORT</span>
+                    <h2>학생 리포트</h2>
+                    <p>학생별 학습 기록과 역량 분석은 전용 리포트 화면에서 확인합니다.</p>
+                  </div>
+                  <Link className="btn" to={`/classrooms/${classroomId}/report`}>
+                    학생 리포트 보기
+                  </Link>
+                </div>
+                <div className="classroom-report-metrics" aria-label="리포트 참고 현황">
+                  <span>
+                    <strong>{weeks.length}</strong>
+                    <small>분석 대상 주차</small>
+                  </span>
+                  <span>
+                    <strong>{loadedLectureCount}</strong>
+                    <small>현재 불러온 자료</small>
+                  </span>
+                </div>
+              </section>
+            ) : null}
+          </section>
+        </section>
       ) : null}
     </main>
   );

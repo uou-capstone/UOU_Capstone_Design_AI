@@ -6,16 +6,21 @@ import remarkGfm from "remark-gfm";
 import {
   analyzeStudentCompetencyReportStream,
   ClassroomReportAnalysisStage,
+  createClassroomReportCriterion,
+  deleteClassroomReportCriterion,
+  getClassroomReportCriteria,
   getClassroomReportStudents,
   getStudentCompetencyReport,
   streamStudentReportChat,
-  StudentReportChatMessageInput
+  StudentReportChatMessageInput,
+  updateClassroomReportCriterion
 } from "../api/endpoints";
 import { ApiError } from "../api/client";
 import {
   CompetencyOverallLevel,
   StudentCompetencyReport,
   StudentCompetencyScore,
+  StudentReportCustomCriterion,
   StudentReportListItem
 } from "../types";
 
@@ -152,24 +157,56 @@ const ReportChatMessageView = memo(function ReportChatMessageView({
 });
 
 const reportChatDrawerId = "student-report-chat-drawer";
+const initialAnalysisProgress: AnalysisProgressState = {
+  active: false,
+  completed: false,
+  progress: 0,
+  stage: null,
+  label: "",
+  thoughtMarkdown: ""
+};
+
+type ReportSection = "students" | "criteria" | "content";
+
+const REPORT_SECTIONS: ReportSection[] = ["students", "criteria", "content"];
+
+const REPORT_SECTION_META: Record<ReportSection, {
+  label: string;
+  description: string;
+}> = {
+  students: {
+    label: "학생 선택",
+    description: "분석 대상 학생을 고릅니다."
+  },
+  criteria: {
+    label: "평가 항목",
+    description: "리포트 기준을 추가합니다."
+  },
+  content: {
+    label: "레포트 내용",
+    description: "선택 학생의 분석 결과를 봅니다."
+  }
+};
 
 export function ClassroomReportRoute() {
   const { classroomId } = useParams<{ classroomId: string }>();
+  const [activeReportSection, setActiveReportSection] = useState<ReportSection>("content");
   const [students, setStudents] = useState<StudentReportListItem[]>([]);
   const [selectedStudentId, setSelectedStudentId] = useState("");
   const [report, setReport] = useState<StudentCompetencyReport | null>(null);
+  const [criteria, setCriteria] = useState<StudentReportCustomCriterion[]>([]);
+  const [criteriaLoading, setCriteriaLoading] = useState(false);
+  const [criteriaSaving, setCriteriaSaving] = useState(false);
+  const [criteriaError, setCriteriaError] = useState("");
+  const [editingCriterionId, setEditingCriterionId] = useState("");
+  const [criterionForm, setCriterionForm] = useState({ name: "", description: "" });
   const [studentsLoading, setStudentsLoading] = useState(true);
   const [reportLoading, setReportLoading] = useState(false);
   const [analyzing, setAnalyzing] = useState(false);
   const [error, setError] = useState("");
-  const [analysisProgress, setAnalysisProgress] = useState<AnalysisProgressState>({
-    active: false,
-    completed: false,
-    progress: 0,
-    stage: null,
-    label: "",
-    thoughtMarkdown: ""
-  });
+  const [analysisProgress, setAnalysisProgress] = useState<AnalysisProgressState>(
+    initialAnalysisProgress
+  );
   const [chatOpen, setChatOpen] = useState(false);
   const [chatMessages, setChatMessages] = useState<ReportChatMessage[]>([]);
   const [chatInput, setChatInput] = useState("");
@@ -177,12 +214,18 @@ export function ClassroomReportRoute() {
   const [chatError, setChatError] = useState("");
   const studentsRequestSeq = useRef(0);
   const reportRequestSeq = useRef(0);
+  const criteriaRequestSeq = useRef(0);
+  const analysisAbortRef = useRef<AbortController | null>(null);
+  const currentClassroomIdRef = useRef("");
+  const currentSelectedStudentIdRef = useRef("");
   const chatRequestSeqRef = useRef(0);
   const chatAbortRef = useRef<AbortController | null>(null);
   const chatRafRef = useRef<number | null>(null);
   const chatBottomRef = useRef<HTMLDivElement | null>(null);
   const chatToggleRef = useRef<HTMLButtonElement | null>(null);
   const deferredThoughtMarkdown = useDeferredValue(analysisProgress.thoughtMarkdown);
+  currentClassroomIdRef.current = classroomId ?? "";
+  currentSelectedStudentIdRef.current = selectedStudentId;
 
   const selectedStudent = useMemo(
     () => students.find((student) => student.id === selectedStudentId) ?? null,
@@ -196,6 +239,7 @@ export function ClassroomReportRoute() {
       ? report
       : null;
   const canChat = Boolean(classroomId && selectedStudent && visibleReport);
+  const analysisBlocked = analyzing || criteriaLoading || criteriaSaving;
 
   function cancelPendingChatFrame() {
     if (chatRafRef.current !== null) {
@@ -218,6 +262,115 @@ export function ClassroomReportRoute() {
   function closeReportChat() {
     setChatOpen(false);
     window.requestAnimationFrame(() => chatToggleRef.current?.focus());
+  }
+
+  function resetCriterionForm() {
+    setEditingCriterionId("");
+    setCriterionForm({ name: "", description: "" });
+    setCriteriaError("");
+  }
+
+  function selectReportStudent(studentId: string) {
+    setSelectedStudentId(studentId);
+    setActiveReportSection("content");
+  }
+
+  async function refreshCriteria() {
+    if (!classroomId) return;
+    const requestSeq = ++criteriaRequestSeq.current;
+    const requestClassroomId = classroomId;
+    setCriteriaLoading(true);
+    setCriteriaError("");
+    try {
+      const next = await getClassroomReportCriteria(requestClassroomId);
+      if (
+        requestSeq !== criteriaRequestSeq.current ||
+        currentClassroomIdRef.current !== requestClassroomId
+      ) {
+        return;
+      }
+      setCriteria(next);
+    } catch (err) {
+      if (
+        requestSeq !== criteriaRequestSeq.current ||
+        currentClassroomIdRef.current !== requestClassroomId
+      ) {
+        return;
+      }
+      setCriteriaError(err instanceof Error ? err.message : "평가 항목을 불러오지 못했습니다.");
+    } finally {
+      if (
+        requestSeq === criteriaRequestSeq.current &&
+        currentClassroomIdRef.current === requestClassroomId
+      ) {
+        setCriteriaLoading(false);
+      }
+    }
+  }
+
+  function beginCriterionEdit(criterion: StudentReportCustomCriterion) {
+    setEditingCriterionId(criterion.id);
+    setCriterionForm({ name: criterion.name, description: criterion.description });
+    setCriteriaError("");
+  }
+
+  async function saveCriterion(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!classroomId || criteriaSaving || analyzing) return;
+    const actionClassroomId = classroomId;
+    const name = criterionForm.name.trim();
+    const description = criterionForm.description.trim();
+    if (!name || !description) {
+      setCriteriaError("항목 이름과 세부 설명을 모두 입력해 주세요.");
+      return;
+    }
+    setCriteriaSaving(true);
+    setCriteriaError("");
+    try {
+      if (editingCriterionId) {
+        await updateClassroomReportCriterion(actionClassroomId, editingCriterionId, {
+          name,
+          description
+        });
+      } else {
+        await createClassroomReportCriterion(actionClassroomId, {
+          name,
+          description
+        });
+      }
+      if (currentClassroomIdRef.current !== actionClassroomId) return;
+      resetCriterionForm();
+      await refreshCriteria();
+    } catch (err) {
+      if (currentClassroomIdRef.current !== actionClassroomId) return;
+      setCriteriaError(err instanceof Error ? err.message : "평가 항목을 저장하지 못했습니다.");
+    } finally {
+      if (currentClassroomIdRef.current === actionClassroomId) {
+        setCriteriaSaving(false);
+      }
+    }
+  }
+
+  async function removeCriterion(criterion: StudentReportCustomCriterion) {
+    if (!classroomId || criteriaSaving || analyzing) return;
+    const actionClassroomId = classroomId;
+    setCriteriaSaving(true);
+    setCriteriaError("");
+    try {
+      await deleteClassroomReportCriterion(actionClassroomId, criterion.id);
+      if (currentClassroomIdRef.current !== actionClassroomId) return;
+      if (editingCriterionId === criterion.id) {
+        resetCriterionForm();
+      }
+      await refreshCriteria();
+    } catch (err) {
+      if (currentClassroomIdRef.current !== actionClassroomId) return;
+      setCriteriaError(err instanceof Error ? err.message : "평가 항목을 삭제하지 못했습니다.");
+    } finally {
+      if (currentClassroomIdRef.current === actionClassroomId) {
+        setCriteriaSaving(false);
+      }
+    }
   }
 
   async function sendReportChat(event: FormEvent<HTMLFormElement>) {
@@ -339,14 +492,19 @@ export function ClassroomReportRoute() {
   }
 
   async function refreshStudents(preferredStudentId = selectedStudentId) {
-    if (!classroomId) return;
+    if (!classroomId) return "";
     const requestSeq = ++studentsRequestSeq.current;
     const requestClassroomId = classroomId;
     setStudentsLoading(true);
     setError("");
     try {
       const nextStudents = await getClassroomReportStudents(requestClassroomId);
-      if (requestSeq !== studentsRequestSeq.current) return;
+      if (
+        requestSeq !== studentsRequestSeq.current ||
+        currentClassroomIdRef.current !== requestClassroomId
+      ) {
+        return null;
+      }
       setStudents(nextStudents);
       const nextSelected =
         nextStudents.find((student) => student.id === preferredStudentId)?.id ??
@@ -356,11 +514,21 @@ export function ClassroomReportRoute() {
       if (!nextSelected) {
         setReport(null);
       }
+      return nextSelected;
     } catch (err) {
-      if (requestSeq !== studentsRequestSeq.current) return;
+      if (
+        requestSeq !== studentsRequestSeq.current ||
+        currentClassroomIdRef.current !== requestClassroomId
+      ) {
+        return null;
+      }
       setError(err instanceof Error ? err.message : "학생 목록을 불러오지 못했습니다.");
+      return null;
     } finally {
-      if (requestSeq === studentsRequestSeq.current) {
+      if (
+        requestSeq === studentsRequestSeq.current &&
+        currentClassroomIdRef.current === requestClassroomId
+      ) {
         setStudentsLoading(false);
       }
     }
@@ -397,7 +565,11 @@ export function ClassroomReportRoute() {
   }
 
   async function runAnalysis() {
-    if (!classroomId || !selectedStudentId) return;
+    if (!classroomId || !selectedStudentId || analysisBlocked) return;
+    setActiveReportSection("content");
+    analysisAbortRef.current?.abort();
+    const controller = new AbortController();
+    analysisAbortRef.current = controller;
     const requestSeq = ++reportRequestSeq.current;
     const analysisClassroomId = classroomId;
     const analysisStudentId = selectedStudentId;
@@ -437,9 +609,11 @@ export function ClassroomReportRoute() {
               thoughtMarkdown: prev.thoughtMarkdown + event.text
             }));
           }
-        }
+        },
+        controller.signal
       );
       if (
+        controller.signal.aborted ||
         requestSeq !== reportRequestSeq.current ||
         next.reportScope !== "STUDENT" ||
         next.classroomId !== analysisClassroomId ||
@@ -450,7 +624,16 @@ export function ClassroomReportRoute() {
       startTransition(() => {
         setReport(next);
       });
-      await refreshStudents(analysisStudentId);
+      const refreshedStudentId = await refreshStudents(analysisStudentId);
+      if (
+        controller.signal.aborted ||
+        requestSeq !== reportRequestSeq.current ||
+        currentClassroomIdRef.current !== analysisClassroomId ||
+        currentSelectedStudentIdRef.current !== analysisStudentId ||
+        refreshedStudentId !== analysisStudentId
+      ) {
+        return;
+      }
       setAnalysisProgress((prev) => ({
         ...prev,
         active: false,
@@ -463,6 +646,7 @@ export function ClassroomReportRoute() {
             : "학생별 fallback 리포트가 저장되었습니다."
       }));
     } catch (err) {
+      if (controller.signal.aborted) return;
       if (requestSeq !== reportRequestSeq.current) return;
       setAnalysisProgress((prev) => ({
         ...prev,
@@ -472,6 +656,9 @@ export function ClassroomReportRoute() {
     } finally {
       if (requestSeq === reportRequestSeq.current) {
         setAnalyzing(false);
+        if (analysisAbortRef.current === controller) {
+          analysisAbortRef.current = null;
+        }
       }
     }
   }
@@ -479,16 +666,29 @@ export function ClassroomReportRoute() {
   useEffect(() => {
     studentsRequestSeq.current += 1;
     reportRequestSeq.current += 1;
+    criteriaRequestSeq.current += 1;
+    analysisAbortRef.current?.abort();
+    analysisAbortRef.current = null;
     setStudents([]);
     setSelectedStudentId("");
     setReport(null);
+    setCriteria([]);
+    setCriteriaSaving(false);
+    setCriteriaLoading(false);
     setReportLoading(false);
     setAnalyzing(false);
+    setAnalysisProgress(initialAnalysisProgress);
+    resetCriterionForm();
     refreshStudents("").catch(console.error);
+    refreshCriteria().catch(console.error);
   }, [classroomId]);
 
   useEffect(() => {
     if (!selectedStudentId) return;
+    analysisAbortRef.current?.abort();
+    analysisAbortRef.current = null;
+    setAnalyzing(false);
+    setAnalysisProgress(initialAnalysisProgress);
     refreshSelectedReport(selectedStudentId).catch(console.error);
   }, [classroomId, selectedStudentId]);
 
@@ -498,6 +698,8 @@ export function ClassroomReportRoute() {
 
   useEffect(
     () => () => {
+      analysisAbortRef.current?.abort();
+      analysisAbortRef.current = null;
       chatRequestSeqRef.current += 1;
       chatAbortRef.current?.abort();
       chatAbortRef.current = null;
@@ -559,7 +761,7 @@ export function ClassroomReportRoute() {
           <button
             className="btn"
             onClick={() => runAnalysis()}
-            disabled={!selectedStudentId || analyzing}
+            disabled={!selectedStudentId || analysisBlocked}
           >
             {analyzing
               ? "Gemini 분석 중..."
@@ -570,7 +772,49 @@ export function ClassroomReportRoute() {
         </div>
       </div>
 
-      <section className="report-student-panel fade-in" aria-label="학생 선택">
+      <section className="report-workspace">
+        <nav
+          className="card report-section-nav"
+          data-testid="report-section-nav"
+          aria-label="리포트 메뉴"
+        >
+          {REPORT_SECTIONS.map((section) => {
+            const active = activeReportSection === section;
+            const hint =
+              section === "students"
+                ? `${students.length}명`
+                : section === "criteria"
+                  ? `${criteria.length}개`
+                  : selectedStudent?.displayName ?? "학생 선택 필요";
+            return (
+              <button
+                key={section}
+                type="button"
+                className={`report-section-nav-btn${active ? " active" : ""}`}
+                data-testid={`report-nav-${section}`}
+                aria-current={active ? "page" : undefined}
+                onClick={() => setActiveReportSection(section)}
+              >
+                <span>{REPORT_SECTION_META[section].label}</span>
+                <small>{hint || REPORT_SECTION_META[section].description}</small>
+              </button>
+            );
+          })}
+        </nav>
+
+        <section className="report-section-panel" data-testid="report-section-panel">
+          {criteriaError && activeReportSection !== "criteria" ? (
+            <section
+              className="card alert alert-error report-global-alert"
+              data-testid="report-global-criteria-alert"
+              role="alert"
+            >
+              {criteriaError}
+            </section>
+          ) : null}
+
+      {activeReportSection === "students" ? (
+        <section className="report-student-panel fade-in" aria-label="학생 선택">
         <div className="report-student-panel-head">
           <div>
             <strong>참여 학생</strong>
@@ -578,7 +822,7 @@ export function ClassroomReportRoute() {
           </div>
           <span>{students.length}명</span>
         </div>
-        {students.length > 0 ? (
+      {students.length > 0 ? (
           <fieldset className="report-student-selector">
             <legend className="sr-only">리포트 분석 대상 학생</legend>
             {students.map((student) => (
@@ -594,7 +838,7 @@ export function ClassroomReportRoute() {
                   name="report-student"
                   checked={student.id === selectedStudentId}
                   disabled={analyzing}
-                  onChange={() => setSelectedStudentId(student.id)}
+                  onChange={() => selectReportStudent(student.id)}
                 />
                 <span className="report-student-name">{student.displayName}</span>
                 <span className="report-student-code">#{student.inviteCode}</span>
@@ -607,7 +851,115 @@ export function ClassroomReportRoute() {
           <div className="report-student-empty">아직 초대된 학생이 없습니다.</div>
         )}
       </section>
+      ) : null}
 
+      {activeReportSection === "criteria" ? (
+        <section className="card report-criteria-panel fade-in" aria-label="추가 평가 항목">
+        <div className="report-section-head">
+          <div>
+            <h2>추가 평가 항목</h2>
+            <p className="report-copy">
+              이 강의실의 학생 리포트 재분석에 함께 반영됩니다.
+            </p>
+          </div>
+          <span className="report-badge subtle">{criteria.length}개</span>
+        </div>
+
+        <form className="report-criteria-form" onSubmit={saveCriterion}>
+          <label className="form-field">
+            <span>항목 이름</span>
+            <input
+              type="text"
+              maxLength={60}
+              value={criterionForm.name}
+              onChange={(event) =>
+                setCriterionForm((prev) => ({ ...prev, name: event.target.value }))
+              }
+              disabled={criteriaSaving || analyzing}
+              placeholder="예: 발표 논리력"
+            />
+          </label>
+          <label className="form-field">
+            <span>세부 설명</span>
+            <textarea
+              rows={3}
+              maxLength={600}
+              value={criterionForm.description}
+              onChange={(event) =>
+                setCriterionForm((prev) => ({ ...prev, description: event.target.value }))
+              }
+              disabled={criteriaSaving || analyzing}
+              placeholder="이 항목에서 어떤 근거를 보고 평가할지 적어 주세요."
+            />
+          </label>
+          <div className="form-actions">
+            <button className="btn" type="submit" disabled={criteriaSaving || analyzing}>
+              {criteriaSaving
+                ? "저장 중..."
+                : editingCriterionId
+                  ? "항목 수정"
+                  : "항목 추가"}
+            </button>
+            {editingCriterionId ? (
+              <button
+                className="btn ghost"
+                type="button"
+                onClick={resetCriterionForm}
+                disabled={criteriaSaving || analyzing}
+              >
+                취소
+              </button>
+            ) : null}
+          </div>
+        </form>
+
+        {criteriaError ? (
+          <div className="form-error" role="alert">
+            {criteriaError}
+          </div>
+        ) : null}
+
+        {criteriaLoading ? (
+          <p className="report-empty-note">추가 평가 항목을 불러오는 중...</p>
+        ) : criteria.length > 0 ? (
+          <div className="report-criteria-list">
+            {criteria.map((criterion) => (
+              <article key={criterion.id} className="report-criteria-item">
+                <div>
+                  <strong>{criterion.name}</strong>
+                  <p>{criterion.description}</p>
+                </div>
+                <div className="report-criteria-actions">
+                  <button
+                    className="btn ghost"
+                    type="button"
+                    aria-label={`${criterion.name} 수정`}
+                    onClick={() => beginCriterionEdit(criterion)}
+                    disabled={criteriaSaving || analyzing}
+                  >
+                    수정
+                  </button>
+                  <button
+                    className="btn danger"
+                    type="button"
+                    aria-label={`${criterion.name} 삭제`}
+                    onClick={() => removeCriterion(criterion)}
+                    disabled={criteriaSaving || analyzing}
+                  >
+                    삭제
+                  </button>
+                </div>
+              </article>
+            ))}
+          </div>
+        ) : (
+          <p className="report-empty-note">추가된 평가 항목이 없습니다.</p>
+        )}
+      </section>
+      ) : null}
+
+      {activeReportSection === "content" ? (
+        <section className="report-content-section" data-testid="report-content-section">
       {analysisProgress.stage ? (
         <section className="card report-progress-card fade-in">
           <div className="report-progress-head">
@@ -621,6 +973,7 @@ export function ClassroomReportRoute() {
           <div
             className="report-progress-track"
             role="progressbar"
+            aria-label="학생별 역량 리포트 분석 진행률"
             aria-valuemin={0}
             aria-valuemax={100}
             aria-valuenow={analysisProgress.progress}
@@ -795,7 +1148,7 @@ export function ClassroomReportRoute() {
           <section className="card report-competency-panel fade-in">
             <div className="report-section-head">
               <div>
-                <h3>10대 역량 체크리스트</h3>
+                <h3>{visibleReport.competencies.length}개 역량 체크리스트</h3>
                 <p className="report-copy">
                   세션 메모, 질문 로그, 퀴즈 성과를 묶어 항목별로 점수를 시각화했습니다.
                 </p>
@@ -932,12 +1285,16 @@ export function ClassroomReportRoute() {
             분석하고 저장합니다.
           </p>
           <div className="form-actions">
-            <button className="btn" onClick={() => runAnalysis()} disabled={analyzing}>
+            <button className="btn" onClick={() => runAnalysis()} disabled={analysisBlocked}>
               {analyzing ? "Gemini 분석 중..." : "Gemini로 첫 학생 리포트 분석"}
             </button>
           </div>
         </section>
       ) : null}
+        </section>
+      ) : null}
+        </section>
+      </section>
 
       <button
         ref={chatToggleRef}

@@ -1,5 +1,6 @@
 import { appConfig } from "../../config.js";
 import {
+  BuiltInStudentCompetencyKey,
   Classroom,
   CompetencyAnalysisStatus,
   CompetencyGenerationMode,
@@ -12,6 +13,7 @@ import {
   StudentCompetencyReport,
   StudentCompetencyScore,
   StudentLectureInsight,
+  StudentReportCustomCriterion,
   StudentReportSourceStats,
   User,
   Week
@@ -24,8 +26,15 @@ import { JsonStore } from "../storage/JsonStore.js";
 const MEANINGFUL_QUESTION_REGEX =
   /(다음\s*페이지|다음으로|넘어가|다음\s*슬라이드|next\s*page|next\b)/i;
 
-const COMPETENCY_DEFS: Array<{
+interface StudentCompetencyDefinition {
   key: StudentCompetencyKey;
+  label: string;
+  description: string;
+  customCriterionId?: string;
+}
+
+const COMPETENCY_DEFS: Array<{
+  key: BuiltInStudentCompetencyKey;
   label: string;
   description: string;
 }> = [
@@ -81,140 +90,161 @@ const COMPETENCY_DEFS: Array<{
   }
 ];
 
-const STUDENT_REPORT_JSON_SCHEMA = {
-  type: "object",
-  additionalProperties: false,
-  required: [
-    "schemaVersion",
-    "classroomId",
-    "classroomTitle",
-    "studentLabel",
-    "generatedAt",
-    "analysisStatus",
-    "generationMode",
-    "headline",
-    "summaryMarkdown",
-    "overallScore",
-    "overallLevel",
-    "competencies",
-    "strengths",
-    "growthAreas",
-    "coachingInsights",
-    "recommendedActions",
-    "lectureInsights",
-    "sourceStats",
-    "dataQualityNote"
-  ],
-  properties: {
-    schemaVersion: { type: "string", enum: ["1.0"] },
-    classroomId: { type: "string" },
-    classroomTitle: { type: "string" },
-    studentLabel: { type: "string" },
-    generatedAt: { type: "string" },
-    analysisStatus: { type: "string", enum: ["READY", "SPARSE_DATA"] },
-    generationMode: { type: "string", enum: ["AI_ANALYZED", "HEURISTIC_FALLBACK"] },
-    headline: { type: "string" },
-    summaryMarkdown: { type: "string" },
-    overallScore: { type: "number", minimum: 0, maximum: 100 },
-    overallLevel: {
-      type: "string",
-      enum: ["EMERGING", "DEVELOPING", "PROFICIENT", "ADVANCED"]
-    },
-    competencies: {
-      type: "array",
-      minItems: 10,
-      maxItems: 10,
-      items: {
-        type: "object",
-        additionalProperties: false,
-        required: ["key", "label", "score", "trend", "summary", "evidence"],
-        properties: {
-          key: {
-            type: "string",
-            enum: COMPETENCY_DEFS.map((item) => item.key)
-          },
-          label: { type: "string" },
-          score: { type: "number", minimum: 0, maximum: 100 },
-          trend: { type: "string", enum: ["UP", "STEADY", "DOWN"] },
-          summary: { type: "string" },
-          evidence: {
-            type: "array",
-            items: { type: "string" }
+function customCriterionKey(criterion: StudentReportCustomCriterion): StudentCompetencyKey {
+  return `CUSTOM_${criterion.id}`;
+}
+
+function buildCompetencyDefinitions(
+  customCriteria: StudentReportCustomCriterion[]
+): StudentCompetencyDefinition[] {
+  return [
+    ...COMPETENCY_DEFS,
+    ...customCriteria.map((criterion) => ({
+      key: customCriterionKey(criterion),
+      label: criterion.name,
+      description: criterion.description,
+      customCriterionId: criterion.id
+    }))
+  ];
+}
+
+function buildStudentReportJsonSchema(definitions: StudentCompetencyDefinition[]) {
+  const competencyCount = definitions.length;
+  return {
+    type: "object",
+    additionalProperties: false,
+    required: [
+      "schemaVersion",
+      "classroomId",
+      "classroomTitle",
+      "studentLabel",
+      "generatedAt",
+      "analysisStatus",
+      "generationMode",
+      "headline",
+      "summaryMarkdown",
+      "overallScore",
+      "overallLevel",
+      "competencies",
+      "strengths",
+      "growthAreas",
+      "coachingInsights",
+      "recommendedActions",
+      "lectureInsights",
+      "sourceStats",
+      "dataQualityNote"
+    ],
+    properties: {
+      schemaVersion: { type: "string", enum: ["1.0"] },
+      classroomId: { type: "string" },
+      classroomTitle: { type: "string" },
+      studentLabel: { type: "string" },
+      generatedAt: { type: "string" },
+      analysisStatus: { type: "string", enum: ["READY", "SPARSE_DATA"] },
+      generationMode: { type: "string", enum: ["AI_ANALYZED", "HEURISTIC_FALLBACK"] },
+      headline: { type: "string" },
+      summaryMarkdown: { type: "string" },
+      overallScore: { type: "number", minimum: 0, maximum: 100 },
+      overallLevel: {
+        type: "string",
+        enum: ["EMERGING", "DEVELOPING", "PROFICIENT", "ADVANCED"]
+      },
+      competencies: {
+        type: "array",
+        minItems: competencyCount,
+        maxItems: competencyCount,
+        items: {
+          type: "object",
+          additionalProperties: false,
+          required: ["key", "label", "score", "trend", "summary", "evidence"],
+          properties: {
+            key: {
+              type: "string",
+              enum: definitions.map((item) => item.key)
+            },
+            label: { type: "string" },
+            score: { type: "number", minimum: 0, maximum: 100 },
+            trend: { type: "string", enum: ["UP", "STEADY", "DOWN"] },
+            summary: { type: "string" },
+            evidence: {
+              type: "array",
+              items: { type: "string" }
+            }
           }
         }
-      }
-    },
-    strengths: { type: "array", items: { type: "string" } },
-    growthAreas: { type: "array", items: { type: "string" } },
-    coachingInsights: { type: "array", items: { type: "string" } },
-    recommendedActions: {
-      type: "array",
-      items: {
-        type: "object",
-        additionalProperties: false,
-        required: ["title", "description"],
-        properties: {
-          title: { type: "string" },
-          description: { type: "string" }
+      },
+      strengths: { type: "array", items: { type: "string" } },
+      growthAreas: { type: "array", items: { type: "string" } },
+      coachingInsights: { type: "array", items: { type: "string" } },
+      recommendedActions: {
+        type: "array",
+        items: {
+          type: "object",
+          additionalProperties: false,
+          required: ["title", "description"],
+          properties: {
+            title: { type: "string" },
+            description: { type: "string" }
+          }
         }
-      }
-    },
-    lectureInsights: {
-      type: "array",
-      items: {
+      },
+      lectureInsights: {
+        type: "array",
+        items: {
+          type: "object",
+          additionalProperties: false,
+          required: [
+            "lectureId",
+            "lectureTitle",
+            "weekTitle",
+            "questionCount",
+            "quizCount",
+            "averageQuizScore",
+            "masteryLabel"
+          ],
+          properties: {
+            lectureId: { type: "string" },
+            lectureTitle: { type: "string" },
+            weekTitle: { type: "string" },
+            questionCount: { type: "number" },
+            quizCount: { type: "number" },
+            averageQuizScore: { type: "number" },
+            masteryLabel: { type: "string" }
+          }
+        }
+      },
+      sourceStats: {
         type: "object",
         additionalProperties: false,
         required: [
-          "lectureId",
-          "lectureTitle",
-          "weekTitle",
+          "lectureCount",
+          "sessionCount",
+          "completedPageCount",
+          "pageCoverageRatio",
           "questionCount",
           "quizCount",
+          "gradedQuizCount",
           "averageQuizScore",
-          "masteryLabel"
+          "feedbackCount",
+          "memoryRefreshCount"
         ],
         properties: {
-          lectureId: { type: "string" },
-          lectureTitle: { type: "string" },
-          weekTitle: { type: "string" },
+          lectureCount: { type: "number" },
+          sessionCount: { type: "number" },
+          completedPageCount: { type: "number" },
+          pageCoverageRatio: { type: "number" },
           questionCount: { type: "number" },
           quizCount: { type: "number" },
+          gradedQuizCount: { type: "number" },
           averageQuizScore: { type: "number" },
-          masteryLabel: { type: "string" }
+          feedbackCount: { type: "number" },
+          memoryRefreshCount: { type: "number" }
         }
-      }
-    },
-    sourceStats: {
-      type: "object",
-      additionalProperties: false,
-      required: [
-        "lectureCount",
-        "sessionCount",
-        "completedPageCount",
-        "pageCoverageRatio",
-        "questionCount",
-        "quizCount",
-        "gradedQuizCount",
-        "averageQuizScore",
-        "feedbackCount",
-        "memoryRefreshCount"
-      ],
-      properties: {
-        lectureCount: { type: "number" },
-        sessionCount: { type: "number" },
-        completedPageCount: { type: "number" },
-        pageCoverageRatio: { type: "number" },
-        questionCount: { type: "number" },
-        quizCount: { type: "number" },
-        gradedQuizCount: { type: "number" },
-        averageQuizScore: { type: "number" },
-        feedbackCount: { type: "number" },
-        memoryRefreshCount: { type: "number" }
-      }
-    },
-    dataQualityNote: { type: "string" }
-  }
-} as const;
+      },
+      dataQualityNote: { type: "string" }
+    }
+  } as const;
+}
 
 interface LectureSourceRow {
   week: Week;
@@ -227,6 +257,7 @@ interface AggregatedClassroomSource {
   reportScope: NonNullable<StudentCompetencyReport["reportScope"]>;
   studentUserId?: string;
   studentLabel: string;
+  competencyDefinitions: StudentCompetencyDefinition[];
   analysisStatus: CompetencyAnalysisStatus;
   sourceStats: StudentReportSourceStats;
   lectureInsights: StudentLectureInsight[];
@@ -271,6 +302,7 @@ interface StudentReportAnalysisCallbacks {
   onStage?: (event: StudentReportAnalysisStageEvent) => void;
   onThoughtDelta?: (text: string) => void;
   onAnswerDelta?: (text: string) => void;
+  signal?: AbortSignal;
 }
 
 export interface StudentReportChatMessage {
@@ -409,6 +441,21 @@ function safeAction(title: string, description: string): StudentActionRecommenda
   };
 }
 
+function buildDefaultCompetencyScore(
+  definition: StudentCompetencyDefinition,
+  score: number,
+  evidence: string
+): StudentCompetencyScore {
+  return {
+    key: definition.key,
+    label: definition.label,
+    score: clampScore(score),
+    trend: "STEADY",
+    summary: `${definition.label} 항목은 현재 근거를 바탕으로 보수적으로 평가했습니다.`,
+    evidence: evidenceList([], [evidence || definition.description])
+  };
+}
+
 export class StudentCompetencyReportService {
   constructor(
     private readonly store: JsonStore,
@@ -436,7 +483,7 @@ export class StudentCompetencyReportService {
       const analysis = await this.bridge.analyzeStudentCompetencyReport({
         model: appConfig.modelName,
         prompt: this.buildAnalysisPrompt(source, fallbackReport),
-        responseJsonSchema: STUDENT_REPORT_JSON_SCHEMA
+        responseJsonSchema: buildStudentReportJsonSchema(source.competencyDefinitions)
       });
 
       const parsed = parseStudentCompetencyReport(analysis.report);
@@ -487,11 +534,13 @@ export class StudentCompetencyReportService {
       source.sourceStats.memoryRefreshCount;
 
     if (evidenceCount === 0) {
+      if (callbacks?.signal?.aborted) return null;
       callbacks?.onStage?.({
         stage: "WRITING_REPORT",
         label: "데이터가 적어 임시 리포트를 저장하는 중",
         progress: 88
       });
+      if (callbacks?.signal?.aborted) return null;
       await this.store.saveClassroomReport(fallbackReport);
       callbacks?.onStage?.({
         stage: "COMPLETE",
@@ -506,6 +555,7 @@ export class StudentCompetencyReportService {
       label: "Gemini가 학생 역량을 분석하는 중",
       progress: 52
     });
+    if (callbacks?.signal?.aborted) return null;
 
     let scoringStageEmitted = false;
 
@@ -514,7 +564,8 @@ export class StudentCompetencyReportService {
         {
           model: appConfig.modelName,
           prompt: this.buildAnalysisPrompt(source, fallbackReport),
-          responseJsonSchema: STUDENT_REPORT_JSON_SCHEMA
+          responseJsonSchema: buildStudentReportJsonSchema(source.competencyDefinitions),
+          signal: callbacks?.signal
         },
         (delta) => {
           if (delta.channel === "thought") {
@@ -543,12 +594,14 @@ export class StudentCompetencyReportService {
 
       const parsed = parseStudentCompetencyReport(analysis.report);
       const finalReport = this.mergeAnalyzedReport(source, fallbackReport, parsed);
+      if (callbacks?.signal?.aborted) return null;
 
       callbacks?.onStage?.({
         stage: "WRITING_REPORT",
         label: "리포트를 정리하고 저장하는 중",
         progress: 92
       });
+      if (callbacks?.signal?.aborted) return null;
       await this.store.saveClassroomReport(finalReport);
       callbacks?.onStage?.({
         stage: "COMPLETE",
@@ -557,12 +610,14 @@ export class StudentCompetencyReportService {
       });
       return finalReport;
     } catch {
+      if (callbacks?.signal?.aborted) return null;
       callbacks?.onStage?.({
         stage: "WRITING_REPORT",
         label: "Gemini 응답을 정리하지 못해 fallback 리포트를 저장하는 중",
         progress: 92,
         detail: "fallback"
       });
+      if (callbacks?.signal?.aborted) return null;
       await this.store.saveClassroomReport(fallbackReport);
       callbacks?.onStage?.({
         stage: "COMPLETE",
@@ -605,7 +660,7 @@ export class StudentCompetencyReportService {
       const analysis = await this.bridge.analyzeStudentCompetencyReport({
         model: appConfig.modelName,
         prompt: this.buildAnalysisPrompt(source, fallbackReport),
-        responseJsonSchema: STUDENT_REPORT_JSON_SCHEMA
+        responseJsonSchema: buildStudentReportJsonSchema(source.competencyDefinitions)
       });
 
       const parsed = parseStudentCompetencyReport(analysis.report);
@@ -665,11 +720,13 @@ export class StudentCompetencyReportService {
       source.sourceStats.memoryRefreshCount;
 
     if (evidenceCount === 0) {
+      if (callbacks?.signal?.aborted) return null;
       callbacks?.onStage?.({
         stage: "WRITING_REPORT",
         label: "데이터가 적어 학생별 임시 리포트를 저장하는 중",
         progress: 88
       });
+      if (callbacks?.signal?.aborted) return null;
       await this.store.saveClassroomReport(fallbackReport);
       callbacks?.onStage?.({
         stage: "COMPLETE",
@@ -684,6 +741,7 @@ export class StudentCompetencyReportService {
       label: "Gemini가 학생별 역량을 분석하는 중",
       progress: 52
     });
+    if (callbacks?.signal?.aborted) return null;
 
     let scoringStageEmitted = false;
 
@@ -692,7 +750,8 @@ export class StudentCompetencyReportService {
         {
           model: appConfig.modelName,
           prompt: this.buildAnalysisPrompt(source, fallbackReport),
-          responseJsonSchema: STUDENT_REPORT_JSON_SCHEMA
+          responseJsonSchema: buildStudentReportJsonSchema(source.competencyDefinitions),
+          signal: callbacks?.signal
         },
         (delta) => {
           if (delta.channel === "thought") {
@@ -721,12 +780,14 @@ export class StudentCompetencyReportService {
 
       const parsed = parseStudentCompetencyReport(analysis.report);
       const finalReport = this.mergeAnalyzedReport(source, fallbackReport, parsed);
+      if (callbacks?.signal?.aborted) return null;
 
       callbacks?.onStage?.({
         stage: "WRITING_REPORT",
         label: "학생별 리포트를 정리하고 저장하는 중",
         progress: 92
       });
+      if (callbacks?.signal?.aborted) return null;
       await this.store.saveClassroomReport(finalReport);
       callbacks?.onStage?.({
         stage: "COMPLETE",
@@ -735,12 +796,14 @@ export class StudentCompetencyReportService {
       });
       return finalReport;
     } catch {
+      if (callbacks?.signal?.aborted) return null;
       callbacks?.onStage?.({
         stage: "WRITING_REPORT",
         label: "Gemini 응답을 정리하지 못해 학생별 fallback 리포트를 저장하는 중",
         progress: 92,
         detail: "fallback"
       });
+      if (callbacks?.signal?.aborted) return null;
       await this.store.saveClassroomReport(fallbackReport);
       callbacks?.onStage?.({
         stage: "COMPLETE",
@@ -855,8 +918,10 @@ export class StudentCompetencyReportService {
       generatedAt: new Date().toISOString(),
       analysisStatus: source.analysisStatus,
       generationMode: "AI_ANALYZED",
-      competencies: COMPETENCY_DEFS.map((definition) => {
-        const fallbackItem = fallbackReport.competencies.find((item) => item.key === definition.key)!;
+      competencies: source.competencyDefinitions.map((definition) => {
+        const fallbackItem =
+          fallbackReport.competencies.find((item) => item.key === definition.key) ??
+          buildDefaultCompetencyScore(definition, fallbackReport.overallScore, fallbackReport.dataQualityNote);
         const candidate = mergedByKey.get(definition.key);
         return {
           ...fallbackItem,
@@ -900,7 +965,16 @@ export class StudentCompetencyReportService {
     classroom: Classroom,
     options: ClassroomSourceOptions = {}
   ): Promise<AggregatedClassroomSource> {
-    const weeks = await this.store.listWeeksByClassroom(classroom.id);
+    const storeWithCriteria = this.store as JsonStore & {
+      listClassroomReportCriteria?: JsonStore["listClassroomReportCriteria"];
+    };
+    const [weeks, customCriteria] = await Promise.all([
+      this.store.listWeeksByClassroom(classroom.id),
+      typeof storeWithCriteria.listClassroomReportCriteria === "function"
+        ? storeWithCriteria.listClassroomReportCriteria(classroom.id)
+        : Promise.resolve([])
+    ]);
+    const competencyDefinitions = buildCompetencyDefinitions(customCriteria);
     const lecturesByWeek = await this.store.listLecturesByWeekIds(weeks.map((week) => week.id));
     const storeWithScopedSessions = this.store as JsonStore & {
       listEnrollmentsByClassroom?: JsonStore["listEnrollmentsByClassroom"];
@@ -1128,6 +1202,7 @@ export class StudentCompetencyReportService {
       reportScope,
       studentUserId: reportScope === "STUDENT" ? options.studentUserId : undefined,
       studentLabel: options.studentLabel ?? "현재 학습자",
+      competencyDefinitions,
       analysisStatus: evidenceCount >= 4 ? "READY" : "SPARSE_DATA",
       sourceStats,
       lectureInsights,
@@ -1320,6 +1395,36 @@ export class StudentCompetencyReportService {
       }
     ];
 
+    const customCompetencyScores: StudentCompetencyScore[] = source.competencyDefinitions
+      .filter((definition) => definition.customCriterionId)
+      .map((definition, index) => ({
+        key: definition.key,
+        label: definition.label,
+        score: clampScore(
+          average([
+            stats.averageQuizScore,
+            persistenceSignal,
+            reflectionSignal,
+            confidenceSignal
+          ]) - Math.min(8, index * 1.5)
+        ),
+        trend: trendFromDelta(source.quizTrendDelta / 2),
+        summary: `${definition.label} 항목은 교사가 추가한 기준(${definition.description})에 맞춰 현재 학습 로그에서 보수적으로 추정했습니다.`,
+        evidence: evidenceList(
+          [
+            ...source.recentQuestions.slice(-1),
+            ...source.recentFeedback.slice(-1),
+            ...source.recentQuizHighlights.slice(-1)
+          ],
+          [
+            `교사 추가 평가 기준: ${definition.description}`,
+            `분석 근거 ${stats.questionCount + stats.gradedQuizCount + stats.feedbackCount}건`
+          ]
+        )
+      }));
+
+    competencyScores.push(...customCompetencyScores);
+
     const overallScore = clampScore(average(competencyScores.map((item) => item.score)));
     const overallLevel = overallLevelFromScore(overallScore);
 
@@ -1494,7 +1599,7 @@ ${message}
       averageConfidence: Number(source.averageConfidence.toFixed(3)),
       questionAverageChars: Number(source.questionAverageChars.toFixed(1)),
       quizTrendDelta: Number(source.quizTrendDelta.toFixed(1)),
-      competencyDefinitions: COMPETENCY_DEFS
+      competencyDefinitions: source.competencyDefinitions
     };
 
     return `
@@ -1506,14 +1611,14 @@ ${message}
 - 출력은 오직 JSON만 허용된다.
 - 점수는 0~100 정수로 작성하라.
 - 근거가 약한 항목은 과신하지 말고 보수적으로 유지하라.
-- competencies는 아래 10개 key를 정확히 한 번씩 모두 포함해야 한다.
+- competencies는 아래 ${source.competencyDefinitions.length}개 key를 정확히 한 번씩 모두 포함해야 한다.
 - label은 각 key에 맞는 한국어 역량명으로 유지하라.
 - sourceStats, lectureInsights는 입력 초안 구조를 유지해도 된다.
 - summaryMarkdown은 교사가 바로 읽을 수 있는 짧은 요약이어야 한다.
 - recommendedActions는 실행 가능한 행동으로 2~4개 작성하라.
 
-10개 역량 정의:
-${COMPETENCY_DEFS.map((item, index) => `${index + 1}. ${item.key} / ${item.label}: ${item.description}`).join("\n")}
+역량 정의:
+${source.competencyDefinitions.map((item, index) => `${index + 1}. ${item.key} / ${item.label}: ${item.description}`).join("\n")}
 
 실제 근거 데이터:
 ${JSON.stringify(payload, null, 2)}

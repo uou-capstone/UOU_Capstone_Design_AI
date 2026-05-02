@@ -1,11 +1,27 @@
 import {
   IntegratedLearnerMemory,
+  LearnerLevel,
   LearnerMemoryWrite,
+  QuizDifficultyTarget,
   QuizType,
   SessionState
 } from "../../types/domain.js";
 
 const MAX_MEMORY_ITEMS = 8;
+const QUIZ_TYPES: ReadonlySet<string> = new Set(["MCQ", "OX", "SHORT", "ESSAY"]);
+const LEARNER_LEVELS: ReadonlySet<string> = new Set(["BEGINNER", "INTERMEDIATE", "ADVANCED"]);
+const QUIZ_DIFFICULTY_TARGETS: ReadonlySet<string> = new Set([
+  "FOUNDATIONAL",
+  "BALANCED",
+  "CHALLENGING"
+]);
+
+function safeStringArray(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((item) => String(item ?? "").trim())
+    .filter(Boolean);
+}
 
 function mergeUnique(base: string[], incoming?: string[]): string[] {
   const merged = [...base];
@@ -27,6 +43,63 @@ function mergeQuizTypes(base: QuizType[], incoming?: QuizType[]): QuizType[] {
     }
   }
   return merged.slice(0, 4);
+}
+
+function safeQuizTypes(value: unknown): QuizType[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((item) => String(item ?? "").toUpperCase())
+    .filter((item): item is QuizType => QUIZ_TYPES.has(item));
+}
+
+function normalizeTargetDifficulty(value: unknown): QuizDifficultyTarget {
+  const candidate = String(value ?? "BALANCED").toUpperCase();
+  return QUIZ_DIFFICULTY_TARGETS.has(candidate)
+    ? (candidate as QuizDifficultyTarget)
+    : "BALANCED";
+}
+
+function normalizeLearnerLevel(value: unknown): LearnerLevel {
+  const candidate = String(value ?? "INTERMEDIATE").toUpperCase();
+  return LEARNER_LEVELS.has(candidate) ? (candidate as LearnerLevel) : "INTERMEDIATE";
+}
+
+function normalizeConfidence(value: unknown): number {
+  return typeof value === "number" && Number.isFinite(value)
+    ? Math.max(0, Math.min(1, value))
+    : 0.5;
+}
+
+function normalizeIntegratedMemory(value: unknown): IntegratedLearnerMemory {
+  const fallback = createInitialIntegratedMemory();
+  const row = value && typeof value === "object" ? (value as Partial<IntegratedLearnerMemory>) : {};
+  return {
+    summaryMarkdown:
+      typeof row.summaryMarkdown === "string" && row.summaryMarkdown.trim()
+        ? row.summaryMarkdown
+        : fallback.summaryMarkdown,
+    strengths: safeStringArray(row.strengths),
+    weaknesses: safeStringArray(row.weaknesses),
+    misconceptions: safeStringArray(row.misconceptions),
+    explanationPreferences: safeStringArray(row.explanationPreferences),
+    preferredQuizTypes: safeQuizTypes(row.preferredQuizTypes),
+    targetDifficulty: normalizeTargetDifficulty(row.targetDifficulty),
+    nextCoachingGoals: safeStringArray(row.nextCoachingGoals),
+    lastUpdatedAt:
+      typeof row.lastUpdatedAt === "string" && row.lastUpdatedAt.trim()
+        ? row.lastUpdatedAt
+        : fallback.lastUpdatedAt
+  };
+}
+
+function ensureLearnerModel(state: SessionState): void {
+  const current = state.learnerModel;
+  state.learnerModel = {
+    level: normalizeLearnerLevel(current?.level),
+    confidence: normalizeConfidence(current?.confidence),
+    weakConcepts: safeStringArray(current?.weakConcepts),
+    strongConcepts: safeStringArray(current?.strongConcepts)
+  };
 }
 
 export function createInitialIntegratedMemory(): IntegratedLearnerMemory {
@@ -51,25 +124,26 @@ export function applyLearnerMemoryWrite(
     return;
   }
 
-  const current = state.integratedMemory;
+  const current = normalizeIntegratedMemory(state.integratedMemory);
+  ensureLearnerModel(state);
   state.integratedMemory = {
     summaryMarkdown:
       write.summaryMarkdown?.trim() || current.summaryMarkdown,
-    strengths: mergeUnique(current.strengths, write.strengths),
-    weaknesses: mergeUnique(current.weaknesses, write.weaknesses),
-    misconceptions: mergeUnique(current.misconceptions, write.misconceptions),
+    strengths: mergeUnique(current.strengths, safeStringArray(write.strengths)),
+    weaknesses: mergeUnique(current.weaknesses, safeStringArray(write.weaknesses)),
+    misconceptions: mergeUnique(current.misconceptions, safeStringArray(write.misconceptions)),
     explanationPreferences: mergeUnique(
       current.explanationPreferences,
-      write.explanationPreferences
+      safeStringArray(write.explanationPreferences)
     ),
     preferredQuizTypes: mergeQuizTypes(
       current.preferredQuizTypes,
-      write.preferredQuizTypes
+      safeQuizTypes(write.preferredQuizTypes)
     ),
-    targetDifficulty: write.targetDifficulty ?? current.targetDifficulty,
+    targetDifficulty: normalizeTargetDifficulty(write.targetDifficulty ?? current.targetDifficulty),
     nextCoachingGoals: mergeUnique(
       current.nextCoachingGoals,
-      write.nextCoachingGoals
+      safeStringArray(write.nextCoachingGoals)
     ),
     lastUpdatedAt: new Date().toISOString()
   };
@@ -89,7 +163,7 @@ export function applyLearnerMemoryWrite(
 }
 
 export function buildIntegratedMemoryDigest(state: SessionState): string {
-  const memory = state.integratedMemory ?? createInitialIntegratedMemory();
+  const memory = normalizeIntegratedMemory(state.integratedMemory);
   return [
     `요약: ${memory.summaryMarkdown}`,
     `강점: ${memory.strengths.join(", ") || "(없음)"}`,

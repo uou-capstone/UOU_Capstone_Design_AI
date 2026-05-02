@@ -361,7 +361,7 @@ export type CompetencyOverallLevel =
   | "ADVANCED";
 export type CompetencyAnalysisStatus = "READY" | "SPARSE_DATA";
 export type CompetencyGenerationMode = "AI_ANALYZED" | "HEURISTIC_FALLBACK";
-export type StudentCompetencyKey =
+export type BuiltInStudentCompetencyKey =
   | "CONCEPT_UNDERSTANDING"
   | "QUESTION_QUALITY"
   | "PROBLEM_SOLVING"
@@ -372,6 +372,16 @@ export type StudentCompetencyKey =
   | "CLASS_PARTICIPATION"
   | "CONFIDENCE_GROWTH"
   | "IMPROVEMENT_MOMENTUM";
+export type StudentCompetencyKey = BuiltInStudentCompetencyKey | (string & {});
+
+export interface StudentReportCustomCriterion {
+  id: string;
+  classroomId: string;
+  name: string;
+  description: string;
+  createdAt: IsoString;
+  updatedAt: IsoString;
+}
 
 export interface StudentCompetencyScore {
   key: StudentCompetencyKey;

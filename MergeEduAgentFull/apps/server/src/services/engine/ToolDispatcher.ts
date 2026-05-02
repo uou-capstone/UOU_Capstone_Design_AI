@@ -5,6 +5,7 @@ import {
   GradingResult,
   LectureItem,
   QaThreadMode,
+  QuizDifficultyTarget,
   QuizJson,
   QuizRecord,
   QuizType,
@@ -22,7 +23,8 @@ import { QaAgent } from "../agents/QaAgent.js";
 import { QuizAgents } from "../agents/QuizAgents.js";
 import {
   applyLearnerMemoryWrite,
-  buildIntegratedMemoryDigest
+  buildIntegratedMemoryDigest,
+  createInitialIntegratedMemory
 } from "./LearnerMemoryService.js";
 import {
   buildAssessmentLogPayload,
@@ -78,6 +80,11 @@ const INTERVENTION_TOOLS: ReadonlySet<string> = new Set([
 
 /** Ver3 Phase 1: hard cap on total action count after verifier R10. */
 const VERIFIER_HARD_CAP = 8;
+const QUIZ_DIFFICULTY_TARGETS: ReadonlySet<string> = new Set([
+  "FOUNDATIONAL",
+  "BALANCED",
+  "CHALLENGING"
+]);
 
 export interface StreamProgressEvent {
   type: "agent_delta";
@@ -138,6 +145,26 @@ function isQuizAnswerCorrect(
   }
 
   return { correct: false, maxScore: points, feedback: "자동 채점 대상이 아닙니다." };
+}
+
+function safeStringArray(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((item) => String(item ?? "").trim())
+    .filter(Boolean);
+}
+
+function normalizeLearnerConfidence(value: unknown): number {
+  return typeof value === "number" && Number.isFinite(value)
+    ? Math.max(0, Math.min(1, value))
+    : 0.5;
+}
+
+function normalizeTargetDifficulty(value: unknown): QuizDifficultyTarget {
+  const candidate = String(value ?? "BALANCED").toUpperCase();
+  return QUIZ_DIFFICULTY_TARGETS.has(candidate)
+    ? (candidate as QuizDifficultyTarget)
+    : "BALANCED";
 }
 
 function appendAssistantMessage(
@@ -760,7 +787,16 @@ export class ToolDispatcher {
     const pageState = ensurePageState(state, page);
     const fileRef = context.lecture.pdf.geminiFile;
     const learnerMemoryDigest = buildIntegratedMemoryDigest(state);
-    const targetDifficulty = state.integratedMemory?.targetDifficulty ?? "BALANCED";
+    const integratedMemory = state.integratedMemory ?? createInitialIntegratedMemory();
+    const learnerMemory = {
+      strengths: safeStringArray(integratedMemory.strengths),
+      weaknesses: safeStringArray(integratedMemory.weaknesses),
+      misconceptions: safeStringArray(integratedMemory.misconceptions),
+      nextCoachingGoals: safeStringArray(integratedMemory.nextCoachingGoals)
+    };
+    const targetDifficulty = normalizeTargetDifficulty(integratedMemory.targetDifficulty);
+    const learnerLevel = state.learnerModel?.level ?? "INTERMEDIATE";
+    const learnerConfidence = normalizeLearnerConfidence(state.learnerModel?.confidence);
 
     switch (tool) {
       case "APPEND_ORCHESTRATOR_MESSAGE": {
@@ -1044,9 +1080,14 @@ export class ToolDispatcher {
             quizType,
             coverageStartPage: 1,
             coverageEndPage: page,
-            learnerLevel: state.learnerModel.level,
+            learnerLevel,
+            learnerConfidence,
             learnerMemoryDigest,
-            targetDifficulty
+            learnerMemory,
+            qaThreadDigest: buildQaThreadDigest(state, page),
+            targetDifficulty,
+            sessionId: state.sessionId,
+            lectureId: state.lectureId
           },
           (delta) => {
             if (delta.channel !== "thought") {

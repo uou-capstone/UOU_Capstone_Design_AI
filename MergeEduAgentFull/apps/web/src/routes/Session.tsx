@@ -80,6 +80,8 @@ export function SessionRoute() {
   const lastQuizRecordPatchRef = useRef<QuizRecord | null>(null);
   const latestSessionRef = useRef<SessionState | null>(null);
   const activeQuizRef = useRef<QuizJson | null>(null);
+  const activeRouteLectureIdRef = useRef<string | undefined>(lectureId);
+  const loadSessionRunIdRef = useRef(0);
 
   const commitSession = useCallback((nextOrUpdater: SessionState | null | ((prev: SessionState | null) => SessionState | null)) => {
     setSession((prev) => {
@@ -168,20 +170,29 @@ export function SessionRoute() {
     cancelPendingStreamFlush();
     resetStreamBuffers();
     streamRunId.current += 1;
+    if (mountedRef.current) {
+      setStreamDrafts([]);
+    }
   }, [cancelPendingStreamFlush, resetStreamBuffers]);
 
-  async function loadSession() {
-    if (!lectureId) return;
+  async function loadSession(runId: number, targetLectureId: string) {
+    if (!targetLectureId) return;
+    const canCommitLoad = () =>
+      loadSessionRunIdRef.current === runId &&
+      activeRouteLectureIdRef.current === targetLectureId;
+
     setBootLoading(true);
     setBootError("");
     try {
-      const data = await getSessionByLecture(lectureId);
+      const data = await getSessionByLecture(targetLectureId);
+      if (!canCommitLoad()) return;
       commitSession(data.session);
       setPdfUrl(data.pdfUrl);
       setLectureNumPages(Math.max(1, data.lecture.pdf.numPages || 1));
       setAiStatus(data.aiStatus);
       setProgressText(`~${data.session.currentPage}페이지까지 진행`);
     } catch (error) {
+      if (!canCommitLoad()) return;
       const message = error instanceof Error ? error.message : "세션을 불러오지 못했습니다.";
       setBootError(message);
       if (error instanceof ApiError && error.status === 401) {
@@ -192,12 +203,38 @@ export function SessionRoute() {
         navigate("/verify-email", { replace: true });
       }
     } finally {
-      setBootLoading(false);
+      if (canCommitLoad()) {
+        setBootLoading(false);
+      }
     }
   }
 
   useEffect(() => {
-    loadSession();
+    const targetLectureId = lectureId;
+    const runId = ++loadSessionRunIdRef.current;
+    activeRouteLectureIdRef.current = targetLectureId;
+    cleanupAllStreams();
+    bootstrappedSessionId.current = null;
+    commitSession(null);
+    commitActiveQuiz(null);
+    setPdfUrl("");
+    setLectureNumPages(1);
+    setProgressText("");
+    setQuizOpen(false);
+    setDisableQuizClose(false);
+    setEventError("");
+    setBootError("");
+    setBootLoading(Boolean(targetLectureId));
+
+    if (targetLectureId) {
+      loadSession(runId, targetLectureId);
+    }
+
+    return () => {
+      if (loadSessionRunIdRef.current === runId) {
+        loadSessionRunIdRef.current += 1;
+      }
+    };
   }, [lectureId]);
 
   useEffect(() => {
@@ -341,7 +378,7 @@ export function SessionRoute() {
     let runId = streamRunId.current;
     try {
       setEventError("");
-      if (activeStreamEventTypeRef.current === "PAGE_CHANGED") {
+      if (activeStreamRunIdRef.current !== null || activeStreamAbortRef.current) {
         if (activeStreamRunIdRef.current !== null) {
           ignoredStreamRunIdsRef.current.add(activeStreamRunIdRef.current);
         }
@@ -432,13 +469,20 @@ export function SessionRoute() {
             );
 
       flushStreamBuffers(runId);
-      if (!mountedRef.current || ignoredStreamRunIdsRef.current.has(runId)) {
+      const currentSessionId = latestSessionRef.current?.sessionId ?? null;
+      const isCurrentRun =
+        runId === streamRunId.current &&
+        snapshot.sessionId === currentSessionId;
+      if (
+        !mountedRef.current ||
+        ignoredStreamRunIdsRef.current.has(runId) ||
+        !isCurrentRun
+      ) {
         return false;
       }
 
       setPassScoreRatio(isBoundedRatio(response.ui.passScoreRatio) ? response.ui.passScoreRatio : 0.7);
 
-      const isCurrentRun = runId === streamRunId.current;
       commitSession((prev) =>
         prev
           ? (() => {
@@ -497,6 +541,8 @@ export function SessionRoute() {
       if (
         !mountedRef.current ||
         ignoredStreamRunIdsRef.current.has(runId) ||
+        runId !== streamRunId.current ||
+        snapshot.sessionId !== latestSessionRef.current?.sessionId ||
         streamController?.signal.aborted
       ) {
         return false;
@@ -644,7 +690,15 @@ export function SessionRoute() {
             <strong>세션을 열 수 없습니다.</strong>
             <div>{bootError}</div>
             <div className="form-actions">
-              <button className="btn" onClick={loadSession}>
+              <button
+                className="btn"
+                onClick={() => {
+                  if (!lectureId) return;
+                  const runId = ++loadSessionRunIdRef.current;
+                  activeRouteLectureIdRef.current = lectureId;
+                  loadSession(runId, lectureId);
+                }}
+              >
                 다시 시도
               </button>
               <button className="btn ghost" onClick={() => navigate(-1)}>
@@ -679,7 +733,7 @@ export function SessionRoute() {
         </div>
       </div>
 
-      <section className="session-layout">
+      <section className="session-layout" data-testid="session-layout">
         <PdfViewer
           pdfUrl={pdfUrl}
           knownNumPages={lectureNumPages}
@@ -695,7 +749,7 @@ export function SessionRoute() {
           }}
         />
 
-        <section className="card session-chat-shell">
+        <section className="card session-chat-shell" data-testid="session-chat-shell">
           {eventError ? (
             <div className="card session-alert session-alert-error session-alert-row" role="alert">
               {eventError}

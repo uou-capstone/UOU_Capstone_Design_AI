@@ -2,18 +2,76 @@
 
 Gemini 기반 PDF 강의 튜터, 퀴즈, 오답 교정, 학생별 학습 메모리, 선생님용 역량 리포트를 한 흐름으로 연결한 학습 시스템입니다.
 
-# 0430 업데이트 사항
+# 0502 업데이트 사항
+
+## 개발자 로그인/인증 모드 기본 활성화
+
+로컬 실행과 테스트 계정 검증을 빠르게 하기 위해 `.env.example`의 로그인 관련 개발자 모드를 기본으로 항상 켜두는 설정으로 정리했다. 기본값은 `AUTH_EMAIL_DELIVERY_MODE=dev`, `AUTH_DEV_EXPOSE_VERIFICATION_CODE=true`이며, 회원가입/이메일 변경/재전송 과정에서 개발용 인증 코드가 웹 화면과 API 응답에 표시될 수 있다.
+
+실제 메일 인증이 필요한 운영 또는 SMTP 테스트 환경에서는 `AUTH_EMAIL_DELIVERY_MODE=smtp`로 바꾸고 `AUTH_VERIFICATION_CODE_SECRET`, `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`, `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM`을 모두 채워야 한다.
+
+## PDF 뷰어 확대/이동 UX 개선
+
+학습 세션 PDF 뷰어의 `-`, `+` 버튼 중심 확대 UI를 슬라이더 기반 확대 컨트롤로 바꾸고, 확대된 PDF를 뷰어 내부에서 드래그해 이동할 수 있도록 개선했다. PDF 확대는 PDF 캔버스 내부에만 적용되며, 세션 레이아웃이나 오른쪽 AI 튜터 채팅 패널이 함께 커지지 않도록 데스크톱/모바일 높이와 overflow를 고정했다.
+
+구현 위치:
+
+- `apps/web/src/components/pdf/PdfViewer.tsx`
+  - PDF worker를 번들 파일로 로드하고, 확대 슬라이더, 확대율 표시, 맞춤 버튼, 드래그 pan, 확대 중심 유지 로직을 추가했다.
+- `apps/web/src/styles/global.css`
+  - `.session-layout`, `.pdf-viewer-shell`, `.session-chat-shell`, `.pdf-single-view`의 크기와 overflow를 안정화했다.
+- `e2e/pdf-viewer-pan-zoom.spec.ts`
+  - 확대/드래그 이동, 내부 스크롤 fallback, 채팅 패널 크기 고정, 모바일/소형 데스크톱 레이아웃을 검증한다.
+
+## 퀴즈 문항 수 개인화 정책 추가
+
+퀴즈 생성 시 항상 고정 문항 수를 요청하지 않고, 학습자 수준/자신감/누적 메모리/오개념/질문 이력/페이지 복잡도/출제 범위를 바탕으로 5~10문항 사이에서 동적으로 결정하도록 바꿨다. 생성 결과가 요청 문항 수보다 부족하면 재시도하고, 너무 많은 문항은 정책값에 맞게 잘라 안정적인 퀴즈 흐름을 유지한다.
+
+구현 위치:
+
+- `apps/server/src/services/agents/QuizQuestionCountPolicy.ts`
+  - 문항 수 결정을 위한 신호 계산과 5~10문항 clamp 정책을 담당한다.
+- `apps/server/src/services/agents/QuizAgents.ts`
+  - Gemini 퀴즈 생성 요청에 `questionCount`와 결정 근거를 전달하고, 부족 생성 시 재시도/검증 로그를 남긴다.
+- `apps/server/src/tests/quizQuestionCountPolicy.test.ts`, `apps/server/src/tests/quizAgentsQuestionCount.test.ts`
+  - 문항 수 정책과 생성 재시도/trim 동작을 검증한다.
+
+## 회원 정보 수정 전용 화면 정리
+
+대시보드 안에 바로 노출되던 회원 정보 수정 패널을 `/account` 전용 화면으로 분리했다. 상단 프로필 메뉴에서 계정 관리로 이동해 이메일과 비밀번호를 변경할 수 있고, 이메일 변경 후에는 같은 계정 화면으로 돌아오도록 인증 흐름을 연결했다.
+
+구현 위치:
+
+- `apps/web/src/routes/AccountSettings.tsx`
+  - 회원 정보 수정 전용 페이지와 대시보드 복귀 흐름을 담당한다.
+- `apps/web/src/App.tsx`, `apps/web/src/components/layout/AppTopBar.tsx`
+  - `/account` 라우트와 프로필 메뉴 진입점을 연결했다.
+- `apps/web/src/components/account/AccountProfilePanel.tsx`
+  - 전용 화면에서도 취소/인증 후 복귀 흐름을 처리하도록 정리했다.
+
+## 강의실 화면 내비게이션과 리포트 기준 확장
+
+강의실 상세 화면을 `학생 초대`, `강의실 주차`, `학생 리포트` 섹션으로 나눠 교사용 작업 흐름을 더 명확하게 만들었다. 학생 계정은 초대/리포트 관리 섹션을 보지 않고 주차 학습 흐름에 집중하도록 유지했다. 학생 역량 리포트는 기본 기준 외에 강의실별 커스텀 평가 기준을 저장하고 사용할 수 있도록 타입과 저장소 로직을 확장했다.
+
+구현 위치:
+
+- `apps/web/src/routes/Classroom.tsx`
+  - 역할별 강의실 섹션 내비게이션, 업로드 모달 정리, 모바일 폭 대응을 담당한다.
+- `apps/server/src/routes/classrooms.ts`, `apps/server/src/types/domain.ts`
+  - 리포트 기준 조회/저장과 커스텀 기준 타입을 추가했다.
+- `e2e/classroom-navigation.spec.ts`
+  - 교사/학생 역할별 섹션 표시, 학생 목록 실패 재시도, 모바일 폭 맞춤을 검증한다.
 
 ## 회원 정보 수정 기능 추가
 
-로그인 후 대시보드에서 본인의 회원 정보를 확인하고 수정할 수 있는 영역을 추가했다. 사용자는 현재 아이디 이메일과 비밀번호 표시 상태를 확인할 수 있고, `회원 정보 수정`을 통해 이메일과 비밀번호를 변경할 수 있다.
+로그인 후 대시보드와 계정 화면에서 본인의 회원 정보를 확인하고 수정할 수 있는 영역을 추가했다. 사용자는 현재 아이디 이메일과 비밀번호 표시 상태를 확인할 수 있고, `회원 정보 수정`을 통해 이메일과 비밀번호를 변경할 수 있다.
 
 구현 위치:
 
 - `apps/web/src/components/account/AccountProfilePanel.tsx`
   - 회원 정보 표시, 수정 모드 전환, 이메일/비밀번호 입력, 현재 비밀번호 확인, 저장 결과와 개발자 인증 코드 표시 UI를 담당한다.
 - `apps/web/src/routes/Dashboard.tsx`
-  - 로그인 후 대시보드에 `AccountProfilePanel`을 렌더링한다.
+  - 로그인 후 대시보드 진입 흐름을 담당한다.
 - `apps/web/src/auth/AuthProvider.tsx`
   - 회원 정보 수정 후 사용자 상태를 갱신하고, 이메일이 바뀌어 재인증이 필요하면 인증 화면 흐름으로 연결한다.
 - `apps/web/src/api/endpoints.ts`

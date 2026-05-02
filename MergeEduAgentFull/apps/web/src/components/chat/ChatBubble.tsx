@@ -64,6 +64,7 @@ export const ChatBubble = memo(function ChatBubble({ message, onQuizTypeSelect, 
   return (
     <div
       className={`chat-bubble fade-in ${isUser ? "user" : `agent-${message.agent.toLowerCase()}`}`}
+      data-testid="session-chat-bubble"
     >
       {!isUser ? (
         <div className="chat-agent-label">{message.agent}</div>

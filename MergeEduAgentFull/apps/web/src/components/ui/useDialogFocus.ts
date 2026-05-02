@@ -12,12 +12,14 @@ const FOCUSABLE_SELECTOR = [
 export function useDialogFocus(
   open: boolean,
   dialogRef: RefObject<HTMLElement | null>,
-  backdropRef?: RefObject<HTMLElement | null>
+  backdropRef?: RefObject<HTMLElement | null>,
+  options: { allowBackgroundInteraction?: boolean } = {}
 ) {
   useEffect(() => {
     if (!open) return;
     const dialog = dialogRef.current;
     if (!dialog) return;
+    const allowBackgroundInteraction = Boolean(options.allowBackgroundInteraction);
 
     const previousActive = document.activeElement as HTMLElement | null;
     const activeDialog = dialog;
@@ -26,13 +28,15 @@ export function useDialogFocus(
       ? Array.from(appRoot.children)
       : [];
 
-    siblings.forEach((child) => {
-      if (!(child instanceof HTMLElement)) return;
-      child.setAttribute("aria-hidden", "true");
-      if ("inert" in child) {
-        child.inert = true;
-      }
-    });
+    if (!allowBackgroundInteraction) {
+      siblings.forEach((child) => {
+        if (!(child instanceof HTMLElement)) return;
+        child.setAttribute("aria-hidden", "true");
+        if ("inert" in child) {
+          child.inert = true;
+        }
+      });
+    }
     document.body.classList.add("modal-open");
 
     const focusables = Array.from(
@@ -73,20 +77,24 @@ export function useDialogFocus(
       (items[0] ?? activeDialog).focus();
     }
 
-    document.addEventListener("keydown", onKeyDown);
-    document.addEventListener("focusin", onFocusIn);
+    if (!allowBackgroundInteraction) {
+      document.addEventListener("keydown", onKeyDown);
+      document.addEventListener("focusin", onFocusIn);
+    }
     return () => {
-      document.removeEventListener("keydown", onKeyDown);
-      document.removeEventListener("focusin", onFocusIn);
-      siblings.forEach((child) => {
-        if (!(child instanceof HTMLElement)) return;
-        child.removeAttribute("aria-hidden");
-        if ("inert" in child) {
-          child.inert = false;
-        }
-      });
+      if (!allowBackgroundInteraction) {
+        document.removeEventListener("keydown", onKeyDown);
+        document.removeEventListener("focusin", onFocusIn);
+        siblings.forEach((child) => {
+          if (!(child instanceof HTMLElement)) return;
+          child.removeAttribute("aria-hidden");
+          if ("inert" in child) {
+            child.inert = false;
+          }
+        });
+      }
       document.body.classList.remove("modal-open");
       previousActive?.focus?.();
     };
-  }, [backdropRef, dialogRef, open]);
+  }, [backdropRef, dialogRef, open, options.allowBackgroundInteraction]);
 }

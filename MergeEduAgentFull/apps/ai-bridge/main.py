@@ -79,9 +79,11 @@ class GenerateQuizRequest(BaseModel):
     quizType: str
     coverageStartPage: int = 1
     coverageEndPage: int | None = None
-    questionCount: int = Field(default=3, ge=1, le=10)
+    questionCount: int = Field(default=5, ge=5, le=10)
+    questionCountRationale: str | None = None
     learnerLevel: str | None = None
     learnerMemoryDigest: str | None = None
+    qaThreadDigest: str | None = None
     targetDifficulty: str | None = None
 
 
@@ -601,8 +603,12 @@ def generate_quiz(request: GenerateQuizRequest) -> dict[str, Any]:
 - 각 문항은 id, promptMarkdown, points를 포함
 - 학생 수준: {request.learnerLevel or "INTERMEDIATE"}
 - 목표 난이도: {request.targetDifficulty or "BALANCED"}
+- 문항 수 판단 근거:
+{request.questionCountRationale or "(문항 수 판단 근거 없음)"}
 - 학생 통합 메모리:
 {request.learnerMemoryDigest or "(개인화 메모리 없음)"}
+- 현재 페이지 QA 문맥:
+{request.qaThreadDigest or "(현재 페이지 QA 문맥 없음)"}
 
 타입별 필수 키:
 - MCQ: choices[] (각 choice는 id, textMarkdown), answer.choiceId
@@ -819,8 +825,12 @@ def generate_quiz_stream(request: GenerateQuizRequest) -> StreamingResponse:
 - 각 문항은 id, promptMarkdown, points를 포함
 - 학생 수준: {request.learnerLevel or "INTERMEDIATE"}
 - 목표 난이도: {request.targetDifficulty or "BALANCED"}
+- 문항 수 판단 근거:
+{request.questionCountRationale or "(문항 수 판단 근거 없음)"}
 - 학생 통합 메모리:
 {request.learnerMemoryDigest or "(개인화 메모리 없음)"}
+- 현재 페이지 QA 문맥:
+{request.qaThreadDigest or "(현재 페이지 QA 문맥 없음)"}
 
 타입별 필수 키:
 - MCQ: choices[] (각 choice는 id, textMarkdown), answer.choiceId

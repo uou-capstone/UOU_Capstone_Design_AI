@@ -15,7 +15,15 @@ export function LectureUploaderModal({ open, onClose, onSubmit }: Props) {
   const [error, setError] = useState("");
   const dialogRef = useRef<HTMLDivElement | null>(null);
   const backdropRef = useRef<HTMLDivElement | null>(null);
-  useDialogFocus(open, dialogRef, backdropRef);
+  useDialogFocus(open, dialogRef, backdropRef, { allowBackgroundInteraction: true });
+
+  useEffect(() => {
+    if (open) return;
+    setTitle("");
+    setFile(null);
+    setLoading(false);
+    setError("");
+  }, [open]);
 
   const closeModal = useCallback(() => {
     if (loading) return;
@@ -79,7 +87,7 @@ export function LectureUploaderModal({ open, onClose, onSubmit }: Props) {
         ref={dialogRef}
         className="card modal-panel upload-modal-panel"
         role="dialog"
-        aria-modal="true"
+        aria-modal="false"
         aria-labelledby="lecture-upload-title"
         tabIndex={-1}
       >

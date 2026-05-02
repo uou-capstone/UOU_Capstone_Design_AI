@@ -52,6 +52,7 @@ export function ChatPanel({ messages, onQuizTypeSelect, onBinaryDecision }: Prop
         pinnedToBottomRef.current = distanceFromBottom < 80;
       }}
       className="chat-panel"
+      data-testid="session-chat-panel"
     >
       {messages.map((message) => (
         <ChatBubble

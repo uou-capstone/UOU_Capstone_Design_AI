@@ -208,6 +208,12 @@ body.modal-open {
   color: var(--text);
 }
 
+.form-field > span {
+  font-size: 13px;
+  font-weight: 800;
+  color: var(--text);
+}
+
 .role-segment {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -684,18 +690,68 @@ textarea:focus::placeholder {
   flex-wrap: wrap;
 }
 
+.pdf-page-indicator,
+.pdf-zoom-readout {
+  min-width: 72px;
+  text-align: center;
+  font-weight: 800;
+  color: var(--muted);
+}
+
+.pdf-zoom-readout {
+  min-width: 48px;
+}
+
+.pdf-zoom-control {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: min(220px, 100%);
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.pdf-zoom-control input[type="range"] {
+  width: clamp(120px, 16vw, 210px);
+  accent-color: var(--accent);
+}
+
 .pdf-single-view {
   flex: 1;
   min-height: 0;
   overflow: auto;
   padding: 10px;
-  display: grid;
-  place-items: center;
+  display: block;
+  overscroll-behavior: contain;
+  touch-action: pan-x pan-y;
+  scrollbar-gutter: stable both-edges;
+}
+
+.pdf-single-view.can-pan {
+  cursor: grab;
+}
+
+.pdf-single-view.is-panning {
+  cursor: grabbing;
+  user-select: none;
+}
+
+.pdf-pan-surface {
+  min-width: 100%;
+  min-height: 100%;
+  width: max-content;
+  height: max-content;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .pdf-single-view .react-pdf__Document,
 .pdf-single-view .react-pdf__Page {
-  margin: 0 auto;
+  width: max-content;
+  max-width: none;
+  margin: 0;
 }
 
 .pdf-single-view .react-pdf__Page canvas {
@@ -703,6 +759,9 @@ textarea:focus::placeholder {
   background: #ffffff;
   border: 1px solid rgba(18, 34, 64, 0.12);
   box-shadow: 0 8px 18px rgba(15, 23, 42, 0.1);
+  display: block;
+  user-select: none;
+  -webkit-user-drag: none;
 }
 
 .alert,
@@ -813,6 +872,64 @@ select:focus-visible {
 .report-empty-state {
   padding: 22px;
   background: var(--surface-raised);
+}
+
+.report-workspace {
+  display: grid;
+  grid-template-columns: 240px minmax(0, 1fr);
+  gap: 16px;
+  align-items: start;
+}
+
+.report-section-nav {
+  position: sticky;
+  top: calc(var(--topbar-height) + 16px);
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+}
+
+.report-section-nav-btn {
+  width: 100%;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  padding: 12px;
+  background: transparent;
+  color: var(--text);
+  text-align: left;
+  display: grid;
+  gap: 4px;
+}
+
+.report-section-nav-btn:hover,
+.report-section-nav-btn:focus-visible {
+  border-color: rgba(47, 114, 214, 0.22);
+  background: rgba(47, 114, 214, 0.06);
+}
+
+.report-section-nav-btn.active {
+  border-color: rgba(47, 114, 214, 0.34);
+  background: rgba(47, 114, 214, 0.1);
+}
+
+.report-section-nav-btn span {
+  font-weight: 900;
+}
+
+.report-section-nav-btn small {
+  color: var(--muted);
+  line-height: 1.35;
+}
+
+.report-section-panel,
+.report-content-section {
+  min-width: 0;
+  display: grid;
+  gap: 16px;
+}
+
+.report-global-alert {
+  margin: 0;
 }
 
 .report-student-panel {
@@ -1156,20 +1273,23 @@ select:focus-visible {
 .report-summary-card,
 .report-side-card,
 .report-competency-panel,
-.report-lecture-panel {
+.report-lecture-panel,
+.report-criteria-panel {
   padding: 18px;
 }
 
 .report-top-score-list,
 .report-action-list,
-.report-lecture-list {
+.report-lecture-list,
+.report-criteria-list {
   display: grid;
   gap: 10px;
 }
 
 .report-top-score-item,
 .report-action-item,
-.report-lecture-row {
+.report-lecture-row,
+.report-criteria-item {
   display: flex;
   justify-content: space-between;
   gap: 12px;
@@ -1179,17 +1299,33 @@ select:focus-visible {
 
 .report-top-score-item:first-child,
 .report-action-item:first-child,
-.report-lecture-row:first-child {
+.report-lecture-row:first-child,
+.report-criteria-item:first-child {
   border-top: none;
   padding-top: 0;
 }
 
 .report-top-score-item p,
 .report-action-item p,
-.report-lecture-row p {
+.report-lecture-row p,
+.report-criteria-item p {
   margin: 6px 0 0;
   color: var(--muted);
   font-size: 14px;
+}
+
+.report-criteria-form {
+  display: grid;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.report-criteria-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: flex-end;
 }
 
 .report-top-score-item span {
@@ -1324,7 +1460,8 @@ select:focus-visible {
   .report-hero-main,
   .report-competency-header,
   .report-top-score-item,
-  .report-lecture-row {
+  .report-lecture-row,
+  .report-criteria-item {
     flex-direction: column;
     align-items: flex-start;
   }
@@ -1333,7 +1470,8 @@ select:focus-visible {
     width: 132px;
   }
 
-  .report-lecture-metrics {
+  .report-lecture-metrics,
+  .report-criteria-actions {
     justify-content: flex-start;
   }
 }
@@ -2125,6 +2263,20 @@ select:focus-visible {
     flex-direction: column;
   }
 
+  .pdf-toolbar-controls {
+    align-items: stretch;
+  }
+
+  .pdf-zoom-control {
+    flex: 1 1 100%;
+    width: 100%;
+  }
+
+  .pdf-zoom-control input[type="range"] {
+    flex: 1;
+    width: 100%;
+  }
+
   .heading-actions,
   .form-actions,
   .classroom-card-actions,
@@ -2196,6 +2348,67 @@ body,
   border-radius: 10px;
   color: #fff;
   background: linear-gradient(135deg, var(--accent), var(--teal));
+}
+
+.topbar-display-name {
+  max-width: min(260px, 30vw);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 700;
+}
+
+.topbar-profile {
+  position: relative;
+}
+
+.profile-menu-button {
+  width: 48px;
+  height: 48px;
+  display: inline-grid;
+  place-items: center;
+  border: 1px solid rgba(23, 32, 51, 0.12);
+  border-radius: 50%;
+  background: #ffffff;
+  color: var(--text);
+  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.08);
+}
+
+.profile-menu-button:hover {
+  border-color: rgba(47, 114, 214, 0.34);
+  color: var(--accent);
+}
+
+.profile-menu {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 60;
+  width: min(230px, calc(100vw - 32px));
+  padding: 8px;
+  display: grid;
+  gap: 4px;
+}
+
+.profile-menu-item {
+  width: 100%;
+  border: none;
+  border-radius: 8px;
+  padding: 11px 12px;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-weight: 800;
+  text-align: left;
+}
+
+.profile-menu-item:hover,
+.profile-menu-item:focus-visible {
+  background: #f1f6fb;
+}
+
+.profile-menu-item.danger {
+  color: var(--danger);
 }
 
 .page-shell {
@@ -2272,10 +2485,10 @@ select:focus-visible {
 }
 
 .account-profile-panel {
-  padding: 20px;
+  padding: 28px;
   margin-bottom: 22px;
   display: grid;
-  gap: 16px;
+  gap: 20px;
 }
 
 .account-profile-head {
@@ -2294,13 +2507,13 @@ select:focus-visible {
 .account-profile-list {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 10px;
+  gap: 12px;
   margin: 0;
 }
 
 .account-profile-list > div {
   min-width: 0;
-  padding: 14px;
+  padding: 18px;
   border: 1px solid rgba(23, 32, 51, 0.08);
   border-radius: 10px;
   background: #f6f9fc;
@@ -2334,13 +2547,40 @@ select:focus-visible {
 
 .account-profile-form {
   display: grid;
-  gap: 12px;
+  gap: 14px;
+}
+
+.account-profile-form .input {
+  min-height: 46px;
 }
 
 .account-profile-password-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 12px;
+}
+
+.account-settings-page {
+  display: grid;
+  gap: 18px;
+}
+
+.account-settings-header {
+  display: grid;
+  gap: 14px;
+}
+
+.account-settings-back {
+  width: fit-content;
+  border: none;
+  background: transparent;
+  color: var(--accent);
+  padding: 0;
+  font-weight: 800;
+}
+
+.account-settings-shell {
+  width: 100%;
 }
 
 .dashboard-hero-panel strong {
@@ -2704,15 +2944,18 @@ select:focus-visible {
   padding: 16px;
 }
 
+@media (max-width: 980px) {
+  .session-page .pdf-viewer-shell {
+    min-height: 55dvh;
+  }
+}
+
 .pdf-toolbar {
   padding-bottom: 12px;
   border-bottom: 1px solid rgba(23, 32, 51, 0.08);
 }
 
 .pdf-single-view {
-  align-items: start;
-  justify-items: center;
-  place-items: start center;
   padding: 22px;
   border-radius: 12px;
   background: #f6f9fc;
@@ -2922,6 +3165,7 @@ select:focus-visible {
 .report-competency-header > div,
 .report-action-item,
 .report-lecture-row > div,
+.report-criteria-item > div,
 .report-lecture-metrics {
   min-width: 0;
   overflow-wrap: anywhere;
@@ -3161,11 +3405,18 @@ body,
 #root,
 .auth-page,
 .app-topbar,
+.topbar-profile,
+.profile-menu,
+.profile-menu-button,
+.profile-menu-item,
 .page-shell,
 .card,
 .surface,
 .panel,
 .account-profile-panel,
+.account-settings-page,
+.account-settings-shell,
+.account-settings-header,
 .auth-panel,
 .auth-content,
 .dashboard-hero,
@@ -3220,6 +3471,10 @@ body,
 .btn *,
 .topbar-role,
 .topbar-invite,
+.topbar-display-name,
+.profile-menu-button,
+.profile-menu-button *,
+.profile-menu-item,
 .session-progress-pill,
 .dashboard-hero-pill,
 .dashboard-code,
@@ -3247,6 +3502,17 @@ body,
   -webkit-text-fill-color: currentColor;
 }
 
+.profile-menu-item:hover,
+.profile-menu-item:focus-visible {
+  background-color: #f1f6fb !important;
+  background-image: var(--soft-canvas-image) !important;
+}
+
+.profile-menu-item.danger {
+  color: var(--danger) !important;
+  -webkit-text-fill-color: var(--danger);
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
@@ -3263,15 +3529,35 @@ body,
     padding-inline: 16px;
   }
 
+  .topbar-display-name {
+    max-width: 42vw;
+  }
+
   .dashboard-hero,
   .account-profile-list,
   .account-profile-password-grid,
   .classroom-hero,
   .invite-grid,
   .session-layout,
+  .report-workspace,
   .report-summary-grid,
   .report-insight-grid {
     grid-template-columns: 1fr;
+  }
+
+  .report-section-nav {
+    position: relative;
+    top: auto;
+    display: flex;
+    gap: 8px;
+    overflow-x: auto;
+    scrollbar-gutter: stable;
+    padding: 8px;
+  }
+
+  .report-section-nav-btn {
+    flex: 1 0 min(220px, 78vw);
+    width: auto;
   }
 
   .classroom-hero {
@@ -3300,6 +3586,14 @@ body,
 }
 
 @media (max-width: 640px) {
+  .profile-menu {
+    position: fixed;
+    top: calc(var(--topbar-height) + 6px);
+    left: 16px;
+    right: 16px;
+    width: auto;
+  }
+
   .dashboard-hero,
   .classroom-hero {
     padding: 20px;
@@ -3347,7 +3641,195 @@ body,
     max-height: min(78dvh, calc(100dvh - 24px), 620px);
   }
 
-  .report-chat-send {
+.report-chat-send {
     width: 100%;
+  }
+}
+
+.pdf-single-view {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  contain: layout paint;
+}
+
+@media (min-width: 981px) {
+  .session-layout {
+    --session-workspace-height: calc(100dvh - var(--topbar-height) - var(--session-header-height) - 50px);
+    grid-template-columns: minmax(0, 1.15fr) minmax(360px, 0.85fr);
+    height: var(--session-workspace-height);
+    min-height: min(620px, var(--session-workspace-height));
+    max-height: var(--session-workspace-height);
+    align-items: stretch;
+    overflow: hidden;
+  }
+
+  .session-layout > .pdf-viewer-shell,
+  .session-layout > .session-chat-shell {
+    height: 100%;
+    max-height: 100%;
+    min-height: 0;
+    min-width: 0;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  }
+}
+
+@media (max-width: 980px) {
+  .session-layout {
+    height: auto;
+    max-height: none;
+    overflow: visible;
+  }
+
+  .session-page .pdf-viewer-shell {
+    height: min(72dvh, 760px);
+    min-height: 55dvh;
+    max-height: 82dvh;
+  }
+}
+
+.classroom-workspace {
+  display: grid;
+  grid-template-columns: 236px minmax(0, 1fr);
+  gap: 16px;
+  align-items: start;
+}
+
+.classroom-section-nav {
+  position: sticky;
+  top: calc(var(--topbar-height) + 16px);
+  z-index: 120;
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+}
+
+.classroom-section-nav-btn {
+  width: 100%;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  padding: 12px;
+  background: transparent;
+  color: var(--text);
+  text-align: left;
+  display: grid;
+  gap: 4px;
+}
+
+.classroom-section-nav-btn:hover,
+.classroom-section-nav-btn:focus-visible {
+  border-color: rgba(47, 114, 214, 0.22);
+  background: rgba(47, 114, 214, 0.06);
+}
+
+.classroom-section-nav-btn.active {
+  border-color: rgba(47, 114, 214, 0.34);
+  background: rgba(47, 114, 214, 0.1);
+}
+
+.classroom-section-nav-btn span {
+  font-weight: 900;
+}
+
+.classroom-section-nav-btn small {
+  color: var(--muted);
+  line-height: 1.35;
+}
+
+.classroom-section-panel {
+  min-width: 0;
+  display: grid;
+  gap: 16px;
+}
+
+.classroom-section-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 14px;
+  margin-bottom: 14px;
+}
+
+.classroom-section-head h2 {
+  margin: 0;
+  font-size: 24px;
+}
+
+.classroom-section-head p {
+  margin: 6px 0 0;
+  color: var(--muted);
+}
+
+.classroom-weeks-section,
+.classroom-report-entry {
+  min-width: 0;
+}
+
+.classroom-report-entry {
+  padding: 18px;
+  border: 1px solid rgba(23, 32, 51, 0.1);
+  border-radius: 12px;
+  background: #ffffff;
+  box-shadow: var(--shadow-tight);
+}
+
+.classroom-report-metrics {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 180px));
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.classroom-report-metrics span {
+  display: grid;
+  gap: 4px;
+  padding: 14px;
+  border: 1px solid rgba(23, 32, 51, 0.08);
+  border-radius: 10px;
+  background: #f6f9fc;
+}
+
+.classroom-report-metrics strong {
+  font-size: 22px;
+}
+
+.classroom-report-metrics small {
+  color: var(--muted);
+  font-weight: 700;
+}
+
+.student-list-error {
+  gap: 10px;
+}
+
+@media (max-width: 980px) {
+  .classroom-workspace {
+    grid-template-columns: 1fr;
+  }
+
+  .classroom-section-nav {
+    position: relative;
+    z-index: 120;
+    display: flex;
+    gap: 8px;
+    overflow-x: auto;
+    scrollbar-gutter: stable;
+  }
+
+  .classroom-section-nav-btn {
+    min-width: min(220px, 78vw);
+  }
+}
+
+@media (max-width: 640px) {
+  .classroom-section-head {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .classroom-report-metrics {
+    grid-template-columns: 1fr;
   }
 }

@@ -7,7 +7,7 @@ import { QuizAgents } from "../services/agents/QuizAgents.js";
 import { createInitialIntegratedMemory } from "../services/engine/LearnerMemoryService.js";
 import { createInitialQaThreadMemory } from "../services/engine/QaThreadService.js";
 import { ToolDispatcher } from "../services/engine/ToolDispatcher.js";
-import { SessionState } from "../types/domain.js";
+import { QuizJson, QuizType, SessionState } from "../types/domain.js";
 
 function makeState(): SessionState {
   return {
@@ -31,6 +31,57 @@ function makeState(): SessionState {
     conversationSummary: "",
     updatedAt: new Date().toISOString()
   };
+}
+
+function makeGeneratedQuiz(
+  quizType: QuizType,
+  count: number,
+  id = "quiz_generated",
+  page = 1
+): QuizJson {
+  const questions = Array.from({ length: count }, (_, index) => {
+    const base = {
+      id: `q${index + 1}`,
+      promptMarkdown: `문항 ${index + 1}`,
+      points: 1
+    };
+    if (quizType === "MCQ") {
+      return {
+        ...base,
+        choices: [
+          { id: "c1", textMarkdown: "정답" },
+          { id: "c2", textMarkdown: "오답" }
+        ],
+        answer: { choiceId: "c1" }
+      };
+    }
+    if (quizType === "OX") {
+      return {
+        ...base,
+        answer: { value: index % 2 === 0 }
+      };
+    }
+    if (quizType === "SHORT") {
+      return {
+        ...base,
+        referenceAnswer: { text: "핵심 정의" },
+        rubricMarkdown: "핵심 정의 포함"
+      };
+    }
+    return {
+      ...base,
+      modelAnswerMarkdown: "모범 답안",
+      rubricMarkdown: "핵심 개념과 근거 연결"
+    };
+  });
+
+  return {
+    schemaVersion: "1.0",
+    quizId: id,
+    quizType,
+    page,
+    questions
+  } as QuizJson;
 }
 
 function makeDispatchContext() {
@@ -297,31 +348,23 @@ describe("ToolDispatcher soft failure", () => {
       explainPageStream: async () => ({ markdown: "설명", thoughtSummary: "" }),
       answerQuestionStream: async () => ({ markdown: "답변", thoughtSummary: "" }),
       generateQuizStream: async (
-        _input: unknown,
+        input: { page: number; quizType: QuizType; questionCount: number },
         onDelta?: (delta: { channel: "thought" | "answer"; text: string }) => void
       ) => {
         onDelta?.({ channel: "thought", text: "퀴즈 구성을 점검합니다." });
         onDelta?.({ channel: "answer", text: "{\"schemaVersion\":\"1.0\"}" });
         return {
-          quiz: {
-            schemaVersion: "1.0",
-            quizId: "quiz_stream_hidden",
-            quizType: "MCQ",
-            page: 1,
-            questions: [
-              {
-                id: "q1",
-                promptMarkdown: "정답을 고르세요.",
-                choices: [
-                  { id: "c1", textMarkdown: "정답" },
-                  { id: "c2", textMarkdown: "오답" }
-                ],
-                answer: { choiceId: "c1" }
-              }
-            ]
-          },
+          quiz: makeGeneratedQuiz(
+            input.quizType,
+            input.questionCount,
+            "quiz_stream_hidden",
+            input.page
+          ),
           thoughtSummary: "퀴즈 생성 완료"
         };
+      },
+      generateQuiz: async () => {
+        throw new Error("retry not expected");
       },
       gradeQuizStream: async () => {
         throw new Error("not used");
@@ -351,28 +394,115 @@ describe("ToolDispatcher soft failure", () => {
     expect(result.newMessages[0]?.contentMarkdown).toContain("퀴즈가 생성되었습니다");
   });
 
+  it("passes learner memory, QA thread, and adaptive count signals into quiz generation", async () => {
+    const streamInputs: Array<Record<string, unknown>> = [];
+    const bridge = {
+      explainPageStream: async () => ({ markdown: "설명", thoughtSummary: "" }),
+      answerQuestionStream: async () => ({ markdown: "답변", thoughtSummary: "" }),
+      generateQuizStream: async (input: {
+        page: number;
+        quizType: QuizType;
+        questionCount: number;
+      }) => {
+        streamInputs.push(input as unknown as Record<string, unknown>);
+        return {
+          quiz: makeGeneratedQuiz(input.quizType, input.questionCount, "quiz_adaptive", input.page),
+          thoughtSummary: "적응형 문항 수 생성"
+        };
+      },
+      generateQuiz: async () => {
+        throw new Error("retry not expected");
+      },
+      gradeQuizStream: async () => {
+        throw new Error("not used");
+      }
+    } as any;
+
+    const dispatcher = new ToolDispatcher(
+      new ExplainerAgent(bridge),
+      new QaAgent(bridge),
+      new QuizAgents(bridge),
+      new GraderAgent(bridge),
+      new MisconceptionRepairAgent(bridge)
+    );
+
+    const state = makeState();
+    state.currentPage = 3;
+    state.pageStates = [{ page: 3, status: "EXPLAINED", lastTouchedAt: new Date().toISOString() }];
+    state.learnerModel = {
+      level: "BEGINNER",
+      confidence: 0.2,
+      weakConcepts: ["권한 구분"],
+      strongConcepts: []
+    };
+    state.integratedMemory = {
+      ...createInitialIntegratedMemory(),
+      weaknesses: ["권한 구분"],
+      misconceptions: ["인증과 권한을 같은 개념으로 혼동"],
+      nextCoachingGoals: ["비교 문항으로 세부 확인"],
+      targetDifficulty: "CHALLENGING"
+    };
+    state.qaThread = {
+      page: 3,
+      turns: [
+        {
+          page: 3,
+          question: "인증과 권한이 왜 헷갈리나요?",
+          answerMarkdown: "인증은 신원 확인이고 권한은 접근 가능 범위입니다.",
+          createdAt: new Date().toISOString()
+        }
+      ],
+      lastUpdatedAt: new Date().toISOString()
+    };
+
+    const context = {
+      ...makeDispatchContext(),
+      basePage: 3,
+      pageContext: {
+        pageText: "인증 절차와 권한 비교, 알고리즘 정의를 함께 다룹니다.",
+        prev: "",
+        next: ""
+      },
+      lecture: {
+        ...makeDispatchContext().lecture,
+        pdf: {
+          ...makeDispatchContext().lecture.pdf,
+          numPages: 3
+        }
+      }
+    };
+
+    const result = await dispatcher.dispatch(
+      state,
+      [{ type: "CALL_TOOL", tool: "GENERATE_QUIZ_MCQ", args: { page: 3 } }],
+      context
+    );
+
+    expect(result.ui.openQuizModal).toBe(true);
+    expect(streamInputs).toHaveLength(1);
+    expect(streamInputs[0]?.questionCount).toBeGreaterThan(5);
+    expect(streamInputs[0]?.learnerLevel).toBe("BEGINNER");
+    expect(streamInputs[0]?.learnerMemoryDigest).toContain("권한 구분");
+    expect(streamInputs[0]?.qaThreadDigest).toContain("왜 헷갈리나요");
+    expect(streamInputs[0]?.questionCountRationale).toContain("result=");
+    expect(result.ui.quiz?.questions).toHaveLength(Number(streamInputs[0]?.questionCount));
+  });
+
   it("replaces duplicate generated quiz ids with a session-unique id", async () => {
     const bridge = {
       explainPageStream: async () => ({ markdown: "설명", thoughtSummary: "" }),
       answerQuestionStream: async () => ({ markdown: "답변", thoughtSummary: "" }),
-      generateQuizStream: async () => ({
-        quiz: {
-          schemaVersion: "1.0",
-          quizId: "quiz_duplicate",
-          quizType: "SHORT",
-          page: 1,
-          questions: [
-            {
-              id: "q1",
-              promptMarkdown: "핵심을 쓰세요.",
-              points: 2,
-              referenceAnswer: { text: "핵심 정의" },
-              rubricMarkdown: "핵심 정의 포함"
-            }
-          ]
-        },
+      generateQuizStream: async (input: {
+        page: number;
+        quizType: QuizType;
+        questionCount: number;
+      }) => ({
+        quiz: makeGeneratedQuiz(input.quizType, input.questionCount, "quiz_duplicate", input.page),
         thoughtSummary: "단답형 생성"
       }),
+      generateQuiz: async () => {
+        throw new Error("retry not expected");
+      },
       gradeQuizStream: async () => {
         throw new Error("not used");
       }

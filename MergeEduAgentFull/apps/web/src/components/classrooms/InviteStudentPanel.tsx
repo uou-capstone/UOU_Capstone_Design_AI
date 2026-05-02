@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import {
   getClassroomStudents,
   inviteStudent,
@@ -19,21 +19,45 @@ export function InviteStudentPanel({
   const [candidate, setCandidate] = useState<StudentInviteCandidate | null>(null);
   const [students, setStudents] = useState<ClassroomStudent[]>([]);
   const [loading, setLoading] = useState(false);
+  const [studentsLoading, setStudentsLoading] = useState(false);
+  const [studentsLoadError, setStudentsLoadError] = useState("");
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+  const studentsRequestSeq = useRef(0);
 
-  async function refresh() {
+  const refresh = useCallback(async () => {
     if (!isTeacher) return;
-    setStudents(await getClassroomStudents(classroomId));
-  }
+    const requestSeq = studentsRequestSeq.current + 1;
+    studentsRequestSeq.current = requestSeq;
+    setStudentsLoading(true);
+    setStudentsLoadError("");
+    try {
+      const nextStudents = await getClassroomStudents(classroomId);
+      if (studentsRequestSeq.current !== requestSeq) return;
+      setStudents(nextStudents);
+    } catch (err) {
+      if (studentsRequestSeq.current !== requestSeq) return;
+      setStudents([]);
+      setStudentsLoadError(err instanceof Error ? err.message : "참여 학생 목록을 불러오지 못했습니다.");
+    } finally {
+      if (studentsRequestSeq.current !== requestSeq) return;
+      setStudentsLoading(false);
+    }
+  }, [classroomId, isTeacher]);
 
   useEffect(() => {
     if (!isTeacher) {
+      studentsRequestSeq.current += 1;
       setStudents([]);
+      setStudentsLoadError("");
+      setStudentsLoading(false);
       return;
     }
-    refresh().catch(() => setStudents([]));
-  }, [classroomId, isTeacher]);
+    refresh();
+    return () => {
+      studentsRequestSeq.current += 1;
+    };
+  }, [isTeacher, refresh]);
 
   async function onSearch(event: FormEvent) {
     event.preventDefault();
@@ -99,7 +123,7 @@ export function InviteStudentPanel({
   if (!isTeacher) return null;
 
   return (
-    <section className="card invite-panel">
+    <section className="card invite-panel" data-testid="classroom-invite-panel">
       <div className="invite-panel-head">
         <div>
           <h3>학생 초대</h3>
@@ -159,10 +183,21 @@ export function InviteStudentPanel({
             <span>{students.length}명</span>
           </div>
           <div className="student-list">
-            {students.length === 0 ? (
+            {studentsLoading ? (
+              <div className="student-empty">참여 학생을 불러오는 중...</div>
+            ) : null}
+            {studentsLoadError ? (
+              <div className="student-empty student-list-error" role="alert">
+                <span>{studentsLoadError}</span>
+                <button className="btn ghost" onClick={refresh} disabled={studentsLoading}>
+                  다시 시도
+                </button>
+              </div>
+            ) : null}
+            {!studentsLoading && !studentsLoadError && students.length === 0 ? (
               <div className="student-empty">아직 초대된 학생이 없습니다.</div>
             ) : null}
-            {students.map((student) => (
+            {!studentsLoadError && students.map((student) => (
               <div key={student.id} className="student-row">
                 <span>
                   {student.displayName} #{student.inviteCode}

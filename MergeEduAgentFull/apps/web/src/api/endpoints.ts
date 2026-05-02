@@ -8,6 +8,7 @@ import {
   SessionState,
   StudentInviteCandidate,
   StudentCompetencyReport,
+  StudentReportCustomCriterion,
   StudentReportListItem,
   UserRole,
   Week
@@ -249,6 +250,45 @@ export async function getStudentCompetencyReport(
   return res.data.data;
 }
 
+export async function getClassroomReportCriteria(
+  classroomId: string
+): Promise<StudentReportCustomCriterion[]> {
+  const res = await api.get<{ ok: boolean; data: StudentReportCustomCriterion[] }>(
+    `/classrooms/${classroomId}/report/criteria`
+  );
+  return res.data.data;
+}
+
+export async function createClassroomReportCriterion(
+  classroomId: string,
+  input: { name: string; description: string }
+): Promise<StudentReportCustomCriterion> {
+  const res = await api.post<{ ok: boolean; data: StudentReportCustomCriterion }>(
+    `/classrooms/${classroomId}/report/criteria`,
+    input
+  );
+  return res.data.data;
+}
+
+export async function updateClassroomReportCriterion(
+  classroomId: string,
+  criterionId: string,
+  input: { name?: string; description?: string }
+): Promise<StudentReportCustomCriterion> {
+  const res = await api.patch<{ ok: boolean; data: StudentReportCustomCriterion }>(
+    `/classrooms/${classroomId}/report/criteria/${criterionId}`,
+    input
+  );
+  return res.data.data;
+}
+
+export async function deleteClassroomReportCriterion(
+  classroomId: string,
+  criterionId: string
+): Promise<void> {
+  await api.delete(`/classrooms/${classroomId}/report/criteria/${criterionId}`);
+}
+
 export async function analyzeClassroomCompetencyReport(
   classroomId: string
 ): Promise<StudentCompetencyReport> {
@@ -328,13 +368,15 @@ export async function analyzeClassroomCompetencyReportStream(
 export async function analyzeStudentCompetencyReportStream(
   classroomId: string,
   studentUserId: string,
-  onEvent: (event: ClassroomReportAnalysisStreamEvent) => void
+  onEvent: (event: ClassroomReportAnalysisStreamEvent) => void,
+  signal?: AbortSignal
 ): Promise<StudentCompetencyReport> {
   const response = await fetch(
     `/api/classrooms/${classroomId}/report/students/${studentUserId}/analyze/stream`,
     {
       method: "POST",
-      credentials: "include"
+      credentials: "include",
+      signal
     }
   );
 

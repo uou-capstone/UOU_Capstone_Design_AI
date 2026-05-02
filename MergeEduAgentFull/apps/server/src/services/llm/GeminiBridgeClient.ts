@@ -350,8 +350,10 @@ export class GeminiBridgeClient {
     coverageStartPage?: number;
     coverageEndPage?: number;
     questionCount: number;
+    questionCountRationale?: string;
     learnerLevel?: string;
     learnerMemoryDigest?: string;
+    qaThreadDigest?: string;
     targetDifficulty?: string;
   }): Promise<QuizJson> {
     try {
@@ -375,8 +377,10 @@ export class GeminiBridgeClient {
       coverageStartPage?: number;
       coverageEndPage?: number;
       questionCount: number;
+      questionCountRationale?: string;
       learnerLevel?: string;
       learnerMemoryDigest?: string;
+      qaThreadDigest?: string;
       targetDifficulty?: string;
     },
     onDelta?: (delta: { channel: StreamChannel; text: string }) => void,
@@ -516,14 +520,18 @@ export class GeminiBridgeClient {
       model: string;
       prompt: string;
       responseJsonSchema: Record<string, unknown>;
+      signal?: AbortSignal;
     },
     onDelta?: (delta: { channel: StreamChannel; text: string }) => void
   ): Promise<{ report: unknown; thoughtSummary: string }> {
+    const { signal, ...payload } = input;
     const streamed = await this.streamBridge(
       "analyze_student_report_stream",
       "/bridge/analyze_student_report_stream",
-      input,
-      onDelta
+      payload,
+      onDelta,
+      undefined,
+      signal
     );
     let parsed: unknown = streamed.data;
     if (parsed === undefined) {

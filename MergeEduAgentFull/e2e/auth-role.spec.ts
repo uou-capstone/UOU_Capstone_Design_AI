@@ -22,7 +22,8 @@ async function signupAndVerify(page: import("@playwright/test").Page, input: {
 }
 
 async function logout(page: import("@playwright/test").Page) {
-  await page.getByRole("button", { name: "로그아웃" }).click();
+  await page.getByRole("button", { name: "회원 메뉴" }).click();
+  await page.getByRole("menuitem", { name: "로그아웃" }).click();
   await expect(page.getByRole("heading", { name: "로그인" })).toBeVisible();
 }
 
@@ -76,11 +77,12 @@ test("teacher invites a verified student and student stays read-only", async ({ 
   await expect(page.getByRole("heading", { name: "내 강의실" })).toBeVisible();
   await classroomCard(page, classroomTitle).getByRole("link", { name: "입장" }).click();
   await expect(page.getByRole("heading", { name: "강의실 주차" })).toBeVisible();
-  await page.getByLabel("학생 이름").fill("E2E Student");
-  await page.getByLabel("4자리 코드").fill(inviteCode!);
-  await page.getByRole("button", { name: "검색" }).click();
+  const invitePanel = page.getByTestId("classroom-invite-panel");
+  await invitePanel.getByLabel("학생 이름").fill("E2E Student");
+  await invitePanel.getByLabel("4자리 코드").fill(inviteCode!);
+  await invitePanel.getByRole("button", { name: "검색" }).click();
   await expect(page.getByText(`E2E Student #${inviteCode}`)).toBeVisible();
-  await page.getByRole("button", { name: "초대" }).click();
+  await invitePanel.getByRole("button", { name: "초대" }).click();
   await expect(page.getByText("학생을 초대했습니다.")).toBeVisible();
   await logout(page);
 

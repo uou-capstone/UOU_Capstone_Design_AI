@@ -12,6 +12,7 @@ import {
   SCHEMA_VERSION,
   SessionState,
   StudentCompetencyReport,
+  StudentReportCustomCriterion,
   User,
   Week
 } from "../../types/domain.js";
@@ -131,6 +132,7 @@ export class JsonStore {
     await ensureFile(this.paths.weeks, "[]");
     await ensureFile(this.paths.lectures, "[]");
     await ensureFile(this.paths.classroomReports, "[]");
+    await ensureFile(this.paths.classroomReportCriteria, "[]");
     await ensureFile(this.paths.quizResults, "[]");
     await ensureFile(this.paths.users, "[]");
     await ensureFile(this.paths.authSessions, "[]");
@@ -204,6 +206,7 @@ export class JsonStore {
       );
     });
     await this.deleteClassroomReport(classroomId);
+    await this.deleteClassroomReportCriteria(classroomId);
     await this.deleteEnrollmentsByClassroom(classroomId);
 
     const weeks = await this.listWeeksByClassroom(classroomId);
@@ -312,6 +315,100 @@ export class JsonStore {
       await atomicWrite(
         this.paths.classroomReports,
         reports.filter((item) => item.classroomId !== classroomId)
+      );
+    });
+  }
+
+  async listClassroomReportCriteria(
+    classroomId: string
+  ): Promise<StudentReportCustomCriterion[]> {
+    const criteria = await readJson<StudentReportCustomCriterion[]>(
+      this.paths.classroomReportCriteria,
+      []
+    );
+    return criteria
+      .filter((item) => item.classroomId === classroomId)
+      .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+  }
+
+  async createClassroomReportCriterion(
+    classroomId: string,
+    input: { name: string; description: string }
+  ): Promise<StudentReportCustomCriterion> {
+    return this.withFileLock(this.paths.classroomReportCriteria, async () => {
+      const criteria = await readJson<StudentReportCustomCriterion[]>(
+        this.paths.classroomReportCriteria,
+        []
+      );
+      const currentTime = now();
+      const item: StudentReportCustomCriterion = {
+        id: id("crit"),
+        classroomId,
+        name: input.name,
+        description: input.description,
+        createdAt: currentTime,
+        updatedAt: currentTime
+      };
+      criteria.push(item);
+      await atomicWrite(this.paths.classroomReportCriteria, criteria);
+      return item;
+    });
+  }
+
+  async updateClassroomReportCriterion(
+    classroomId: string,
+    criterionId: string,
+    patch: { name?: string; description?: string }
+  ): Promise<StudentReportCustomCriterion | null> {
+    return this.withFileLock(this.paths.classroomReportCriteria, async () => {
+      const criteria = await readJson<StudentReportCustomCriterion[]>(
+        this.paths.classroomReportCriteria,
+        []
+      );
+      const index = criteria.findIndex(
+        (item) => item.classroomId === classroomId && item.id === criterionId
+      );
+      if (index === -1) return null;
+      const current = criteria[index];
+      const updated: StudentReportCustomCriterion = {
+        ...current,
+        name: patch.name ?? current.name,
+        description: patch.description ?? current.description,
+        updatedAt: now()
+      };
+      criteria[index] = updated;
+      await atomicWrite(this.paths.classroomReportCriteria, criteria);
+      return updated;
+    });
+  }
+
+  async deleteClassroomReportCriterion(
+    classroomId: string,
+    criterionId: string
+  ): Promise<boolean> {
+    return this.withFileLock(this.paths.classroomReportCriteria, async () => {
+      const criteria = await readJson<StudentReportCustomCriterion[]>(
+        this.paths.classroomReportCriteria,
+        []
+      );
+      const next = criteria.filter(
+        (item) => !(item.classroomId === classroomId && item.id === criterionId)
+      );
+      if (next.length === criteria.length) return false;
+      await atomicWrite(this.paths.classroomReportCriteria, next);
+      return true;
+    });
+  }
+
+  async deleteClassroomReportCriteria(classroomId: string): Promise<void> {
+    await this.withFileLock(this.paths.classroomReportCriteria, async () => {
+      const criteria = await readJson<StudentReportCustomCriterion[]>(
+        this.paths.classroomReportCriteria,
+        []
+      );
+      await atomicWrite(
+        this.paths.classroomReportCriteria,
+        criteria.filter((item) => item.classroomId !== classroomId)
       );
     });
   }

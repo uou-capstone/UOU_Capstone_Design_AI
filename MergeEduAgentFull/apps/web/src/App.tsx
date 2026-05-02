@@ -3,6 +3,7 @@ import { ProtectedRoute } from "./auth/ProtectedRoute";
 import { RequireRole } from "./auth/RequireRole";
 import { ClassroomRoute } from "./routes/Classroom";
 import { ClassroomReportRoute } from "./routes/ClassroomReport";
+import { AccountSettingsRoute } from "./routes/AccountSettings";
 import { DashboardRoute } from "./routes/Dashboard";
 import { LoginRoute } from "./routes/Login";
 import { SessionRoute } from "./routes/Session";
@@ -17,6 +18,7 @@ export function App() {
       <Route path="/verify-email" element={<VerifyEmailRoute />} />
       <Route element={<ProtectedRoute />}>
         <Route path="/" element={<DashboardRoute />} />
+        <Route path="/account" element={<AccountSettingsRoute />} />
         <Route path="/classrooms/:classroomId" element={<ClassroomRoute />} />
         <Route
           path="/classrooms/:classroomId/report"
