@@ -104,6 +104,169 @@ export interface GradingItem {
   feedbackMarkdown: string;
 }
 
+export type TeacherExamStatus = "DRAFT" | "PUBLISHED";
+export type TeacherExamQuestionType = "MCQ" | "OX" | "SHORT" | "ESSAY";
+export type TeacherExamAttemptStatus = "IN_PROGRESS" | "GRADING" | "GRADED";
+
+export interface TeacherExamChoice {
+  id: string;
+  textMarkdown: string;
+}
+
+export interface TeacherExamQuestion {
+  id: string;
+  type: TeacherExamQuestionType;
+  promptMarkdown: string;
+  points: number;
+  choices?: TeacherExamChoice[];
+  answer?: { choiceId?: string; value?: boolean };
+  referenceAnswer?: { text: string };
+  rubricMarkdown?: string;
+  modelAnswerMarkdown?: string;
+  explanationMarkdown?: string;
+}
+
+export interface TeacherExamRevision {
+  version: number;
+  title: string;
+  descriptionMarkdown: string;
+  availableFrom: string;
+  availableUntil: string;
+  timeLimitMinutes: number;
+  passScoreRatio: number;
+  aiGradingEnabled: boolean;
+  questions: TeacherExamQuestion[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface TeacherExam {
+  id: string;
+  classroomId: string;
+  weekId: string;
+  status: TeacherExamStatus;
+  activePublishedVersion?: number;
+  draftRevision: TeacherExamRevision;
+  publishedRevision?: TeacherExamRevision;
+  createdAt: string;
+  updatedAt: string;
+  totalPoints?: number;
+  publishedTotalPoints?: number;
+}
+
+export interface TeacherExamGrading {
+  totalScore: number;
+  maxScore: number;
+  scoreRatio: number;
+  items: GradingItem[];
+  summaryMarkdown: string;
+  gradingSource: "AI" | "DETERMINISTIC_FALLBACK";
+  fallback?: boolean;
+}
+
+export interface TeacherExamAttemptSummary {
+  id: string;
+  examId: string;
+  status: TeacherExamAttemptStatus;
+  examVersion: number;
+  startedAt: string;
+  deadlineAt: string;
+  submittedAt?: string;
+  gradedAt?: string;
+  lastSavedAt?: string;
+  answers: Record<string, unknown>;
+  grading?: TeacherExamGrading;
+  questions?: Array<Pick<TeacherExamQuestion, "id" | "type" | "promptMarkdown" | "points" | "choices" | "explanationMarkdown">>;
+}
+
+export interface StudentExamMetadata {
+  id: string;
+  classroomId: string;
+  weekId: string;
+  status: TeacherExamStatus;
+  activePublishedVersion?: number;
+  title: string;
+  descriptionMarkdown: string;
+  availableFrom?: string;
+  availableUntil?: string;
+  timeLimitMinutes?: number;
+  passScoreRatio?: number;
+  totalPoints: number;
+  questionCount: number;
+  attempt: TeacherExamAttemptSummary | null;
+}
+
+export interface ExamStudioProposal {
+  answerMarkdown?: string;
+  replyMarkdown: string;
+  operations?: ExamStudioOperation[];
+  settingsPatch?: Partial<
+    Pick<
+      TeacherExamRevision,
+      | "title"
+      | "descriptionMarkdown"
+      | "availableFrom"
+      | "availableUntil"
+      | "timeLimitMinutes"
+      | "passScoreRatio"
+      | "aiGradingEnabled"
+    >
+  >;
+  appendQuestions?: TeacherExamQuestion[];
+  replaceQuestionId?: string;
+  fallback?: boolean;
+  source?: "AI" | "AI_UNAVAILABLE";
+}
+
+export type ExamStudioOperation =
+  | {
+      method: "patchExamSettings";
+      params: Partial<
+        Pick<
+          TeacherExamRevision,
+          | "title"
+          | "descriptionMarkdown"
+          | "availableFrom"
+          | "availableUntil"
+          | "timeLimitMinutes"
+          | "passScoreRatio"
+          | "aiGradingEnabled"
+        >
+      >;
+    }
+  | {
+      method: "appendQuestions";
+      params: { questions: TeacherExamQuestion[] };
+    }
+  | {
+      method: "replaceQuestion";
+      params: { replaceQuestionId: string; question: TeacherExamQuestion };
+    };
+
+export interface TeacherExamReport {
+  exam: TeacherExam;
+  summary: {
+    enrolledCount: number;
+    attemptCount: number;
+    gradedCount: number;
+    averageScore: number;
+    maxScore: number;
+    completionRatio: number;
+  };
+  students: Array<{
+    studentUserId: string;
+    displayName: string;
+    status: TeacherExamAttemptStatus | "NOT_STARTED";
+    attempt: TeacherExamAttemptSummary | null;
+  }>;
+  questionStats: Array<{
+    questionId: string;
+    maxScore: number;
+    averageScore: number;
+    attempts: number;
+  }>;
+}
+
 export interface QuizRecord {
   id: string;
   quizType: QuizType;

@@ -82,7 +82,8 @@ export const appConfig = {
   )
     .split(",")
     .map((item) => item.trim())
-    .filter(Boolean)
+    .filter(Boolean),
+  examStudioAiTimeoutMs: Number(process.env.EXAM_STUDIO_AI_TIMEOUT_MS ?? "45000")
 } as const;
 
 if (Number.isNaN(appConfig.port)) {
@@ -91,4 +92,8 @@ if (Number.isNaN(appConfig.port)) {
 
 if (appConfig.smtpPort !== undefined && Number.isNaN(appConfig.smtpPort)) {
   throw new Error("SMTP_PORT must be a valid number");
+}
+
+if (Number.isNaN(appConfig.examStudioAiTimeoutMs) || appConfig.examStudioAiTimeoutMs < 1000) {
+  throw new Error("EXAM_STUDIO_AI_TIMEOUT_MS must be at least 1000");
 }

@@ -5,15 +5,18 @@ import {
   createLecture,
   createWeek,
   deleteLecture,
+  deleteTeacherExam,
   deleteWeek,
   deleteWeeksBulk,
   getLectures,
+  getWeekExams,
   getWeeks
 } from "../api/endpoints";
 import { useAuth } from "../auth/useAuth";
 import { InviteStudentPanel } from "../components/classrooms/InviteStudentPanel";
+import { ExamStudioModal } from "../components/exams/ExamStudioModal";
 import { LectureUploaderModal } from "../components/lectures/LectureUploaderModal";
-import { LectureItem, Week } from "../types";
+import { LectureItem, StudentExamMetadata, TeacherExam, Week } from "../types";
 
 type ClassroomSection = "invite" | "weeks" | "report";
 
@@ -51,7 +54,10 @@ export function ClassroomRoute() {
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedWeeks, setSelectedWeeks] = useState<string[]>([]);
   const [lecturesByWeek, setLecturesByWeek] = useState<Record<string, LectureItem[]>>({});
+  const [examsByWeek, setExamsByWeek] = useState<Record<string, Array<TeacherExam | StudentExamMetadata>>>({});
   const [openUploaderForWeek, setOpenUploaderForWeek] = useState<string | null>(null);
+  const [openExamStudioForWeek, setOpenExamStudioForWeek] = useState<string | null>(null);
+  const [editingExam, setEditingExam] = useState<TeacherExam | null>(null);
   const [openWeekMenuId, setOpenWeekMenuId] = useState<string | null>(null);
   const [activeSection, setActiveSection] = useState<ClassroomSection | null>(null);
 
@@ -66,7 +72,10 @@ export function ClassroomRoute() {
     setSelectionMode(false);
     setSelectedWeeks([]);
     setLecturesByWeek({});
+    setExamsByWeek({});
     setOpenUploaderForWeek(null);
+    setOpenExamStudioForWeek(null);
+    setEditingExam(null);
     setOpenWeekMenuId(null);
   }, []);
 
@@ -145,12 +154,15 @@ export function ClassroomRoute() {
     setOpenWeekMenuId(null);
     if (activeSection !== "weeks") {
       setOpenUploaderForWeek(null);
+      setOpenExamStudioForWeek(null);
+      setEditingExam(null);
     }
   }, [activeSection]);
 
-  async function loadLectures(weekId: string) {
-    const lectures = await getLectures(weekId);
+  async function loadWeekContent(weekId: string) {
+    const [lectures, exams] = await Promise.all([getLectures(weekId), getWeekExams(weekId)]);
     setLecturesByWeek((prev) => ({ ...prev, [weekId]: lectures }));
+    setExamsByWeek((prev) => ({ ...prev, [weekId]: exams }));
   }
 
   async function onAddWeek() {
@@ -200,21 +212,34 @@ export function ClassroomRoute() {
     const willExpand = expandedWeek !== weekId;
     setExpandedWeek(willExpand ? weekId : null);
     if (willExpand) {
-      await loadLectures(weekId);
+      await loadWeekContent(weekId);
     }
   }
 
   async function onUploadLecture(weekId: string, payload: { title: string; file: File }) {
     if (!isTeacher) return;
     await createLecture(weekId, payload.title, payload.file);
-    await loadLectures(weekId);
+    await loadWeekContent(weekId);
   }
 
   async function onDeleteLecture(weekId: string, lectureId: string) {
     if (!isTeacher) return;
     if (!confirm("강의를 삭제하시겠습니까?")) return;
     await deleteLecture(lectureId);
-    await loadLectures(weekId);
+    await loadWeekContent(weekId);
+  }
+
+  async function onDeleteExam(weekId: string, examId: string) {
+    if (!isTeacher) return;
+    if (!confirm("시험을 삭제하시겠습니까?")) return;
+    await deleteTeacherExam(examId);
+    await loadWeekContent(weekId);
+  }
+
+  function onExamSaved(weekId: string) {
+    loadWeekContent(weekId).catch(console.error);
+    setOpenExamStudioForWeek(null);
+    setEditingExam(null);
   }
 
   function selectSection(section: ClassroomSection) {
@@ -227,6 +252,8 @@ export function ClassroomRoute() {
   const visibleSections = isTeacher ? TEACHER_SECTIONS : STUDENT_SECTIONS;
   const currentSection = activeSection ?? (isTeacher ? "invite" : "weeks");
   const loadedLectureCount = Object.values(lecturesByWeek).flat().length;
+  const isTeacherExam = (exam: TeacherExam | StudentExamMetadata): exam is TeacherExam =>
+    "draftRevision" in exam;
 
   return (
     <main className="page-shell" onClick={() => setOpenWeekMenuId(null)}>
@@ -399,9 +426,21 @@ export function ClassroomRoute() {
                           <div className="toolbar classroom-content-head">
                             <strong>세부 강의</strong>
                             {isTeacher ? (
-                              <button className="btn" onClick={() => setOpenUploaderForWeek(week.id)}>
-                                세부 강의 추가
-                              </button>
+                              <div className="heading-actions">
+                                <button className="btn" onClick={() => setOpenUploaderForWeek(week.id)}>
+                                  세부 강의 추가
+                                </button>
+                                <button
+                                  className="btn"
+                                  data-testid="classroom-add-exam"
+                                  onClick={() => {
+                                    setEditingExam(null);
+                                    setOpenExamStudioForWeek(week.id);
+                                  }}
+                                >
+                                  과제/시험 추가
+                                </button>
+                              </div>
                             ) : null}
                           </div>
                           <div className="grid lecture-list">
@@ -434,6 +473,73 @@ export function ClassroomRoute() {
                               </div>
                             ))}
                           </div>
+
+                          <div className="toolbar classroom-content-head exam-content-head">
+                            <strong>과제/시험</strong>
+                          </div>
+                          <div className="grid lecture-list classroom-exam-list" data-testid="classroom-exam-list">
+                            {(examsByWeek[week.id] ?? []).length === 0 ? (
+                              <section className="lecture-empty-state">
+                                {isTeacher
+                                  ? "아직 시험이 없습니다. 과제/시험 추가로 첫 평가를 만들어 보세요."
+                                  : "아직 등록된 시험이 없습니다."}
+                              </section>
+                            ) : null}
+                            {(examsByWeek[week.id] ?? []).map((exam) => {
+                              const title = isTeacherExam(exam)
+                                ? exam.draftRevision.title
+                                : exam.title;
+                              const status = isTeacherExam(exam) ? exam.status : exam.attempt?.status ?? exam.status;
+                              const points = isTeacherExam(exam)
+                                ? exam.publishedTotalPoints ?? exam.totalPoints ?? 0
+                                : exam.totalPoints;
+                              return (
+                                <div
+                                  key={exam.id}
+                                  className="lecture-row classroom-exam-row"
+                                  data-testid="classroom-exam-row"
+                                  data-exam-id={exam.id}
+                                >
+                                  <div className="lecture-main">
+                                    <div className="lecture-title">{title}</div>
+                                    <small className="lecture-meta">{status} · {points}점</small>
+                                  </div>
+                                  <div className="lecture-actions">
+                                    {isTeacher && isTeacherExam(exam) ? (
+                                      <>
+                                        <button
+                                          className="btn ghost"
+                                          onClick={() => {
+                                            setEditingExam(exam);
+                                            setOpenExamStudioForWeek(week.id);
+                                          }}
+                                        >
+                                          수정
+                                        </button>
+                                        <Link className="btn" to={`/exams/${exam.id}/report`}>
+                                          리포트
+                                        </Link>
+                                        <button
+                                          className="btn danger"
+                                          onClick={() => onDeleteExam(week.id, exam.id)}
+                                        >
+                                          삭제
+                                        </button>
+                                      </>
+                                    ) : (
+                                      <Link className="btn" to={`/exams/${exam.id}`}>
+                                        {isTeacher
+                                          ? "보기"
+                                          : !isTeacherExam(exam) && exam.attempt?.grading
+                                            ? "결과 보기"
+                                            : "시험 응시"}
+                                      </Link>
+                                    )}
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
                         </div>
                       ) : null}
 
@@ -442,6 +548,20 @@ export function ClassroomRoute() {
                         onClose={() => setOpenUploaderForWeek(null)}
                         onSubmit={(payload) => onUploadLecture(week.id, payload)}
                       />
+                      {classroomId && user ? (
+                        <ExamStudioModal
+                          open={openExamStudioForWeek === week.id}
+                          weekId={week.id}
+                          classroomId={classroomId}
+                          actorUserId={user.id}
+                          exam={editingExam}
+                          onClose={() => {
+                            setOpenExamStudioForWeek(null);
+                            setEditingExam(null);
+                          }}
+                          onSaved={() => onExamSaved(week.id)}
+                        />
+                      ) : null}
                     </article>
                   ))}
                 </section>

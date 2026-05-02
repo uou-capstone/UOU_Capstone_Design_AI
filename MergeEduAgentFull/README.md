@@ -10,6 +10,12 @@ Gemini 기반 PDF 강의 튜터, 퀴즈, 오답 교정, 학생별 학습 메모�
 
 실제 메일 인증이 필요한 운영 또는 SMTP 테스트 환경에서는 `AUTH_EMAIL_DELIVERY_MODE=smtp`로 바꾸고 `AUTH_VERIFICATION_CODE_SECRET`, `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`, `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM`을 모두 채워야 한다.
 
+## AI 모델 및 시험 스튜디오 안정화
+
+기본 LLM 모델을 `gemini-3-flash-preview`로 정리하고, 시험 스튜디오 AI 설계 도우미는 Gemini 3 Flash의 `thinking_level=minimal` 설정을 사용하도록 바꿨다. 빈 JSON schema를 Gemini에 그대로 넘기지 않도록 정리해 응답 지연을 줄였고, 스트리밍 UI는 유지하되 브릿지 내부에서는 빠른 일반 JSON 응답을 사용해 `사고 요약 스트리밍` 단계에서 멈춰 보이는 현상을 줄였다. AI 응답이 비정상적으로 오래 걸릴 경우 `EXAM_STUDIO_AI_TIMEOUT_MS`로 제한할 수 있다.
+
+시험 스튜디오 채팅은 이제 사용자 문장을 서버가 직접 파싱해서 수정하지 않고, 현재 시험 draft와 현재 KST 시간을 Gemini에 넘긴 뒤 `answerMarkdown`과 `operations[{ method, params }]` JSON 응답만 검증해 왼쪽 스튜디오에 반영한다. 예를 들어 "내일 오후 3시로 바꿔줘" 같은 요청은 Gemini가 `patchExamSettings`의 `availableFrom`, `availableUntil`, `timeLimitMinutes`를 직접 내려줘야 반영되며, operation이 없거나 날짜 params가 비어 있으면 UI를 바꾸지 않는다. 불가능한 ISO 날짜나 timezone 없는 날짜도 서버에서 버린다.
+
 ## PDF 뷰어 확대/이동 UX 개선
 
 학습 세션 PDF 뷰어의 `-`, `+` 버튼 중심 확대 UI를 슬라이더 기반 확대 컨트롤로 바꾸고, 확대된 PDF를 뷰어 내부에서 드래그해 이동할 수 있도록 개선했다. PDF 확대는 PDF 캔버스 내부에만 적용되며, 세션 레이아웃이나 오른쪽 AI 튜터 채팅 패널이 함께 커지지 않도록 데스크톱/모바일 높이와 overflow를 고정했다.

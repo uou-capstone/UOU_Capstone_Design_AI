@@ -4,12 +4,18 @@ import {
   Classroom,
   ClassroomStudent,
   CurrentUser,
+  ExamStudioProposal,
   LectureItem,
   SessionState,
+  StudentExamMetadata,
   StudentInviteCandidate,
   StudentCompetencyReport,
   StudentReportCustomCriterion,
   StudentReportListItem,
+  TeacherExam,
+  TeacherExamAttemptSummary,
+  TeacherExamReport,
+  TeacherExamRevision,
   UserRole,
   Week
 } from "../types";
@@ -620,6 +626,257 @@ export async function createLecture(weekId: string, title: string, pdfFile: File
 
 export async function deleteLecture(lectureId: string): Promise<void> {
   await api.delete(`/lectures/${lectureId}`);
+}
+
+export type TeacherExamDraftPayload = Partial<
+  Pick<
+    TeacherExamRevision,
+    | "title"
+    | "descriptionMarkdown"
+    | "availableFrom"
+    | "availableUntil"
+    | "timeLimitMinutes"
+    | "passScoreRatio"
+    | "aiGradingEnabled"
+    | "questions"
+  >
+>;
+
+export async function getWeekExams(weekId: string): Promise<Array<TeacherExam | StudentExamMetadata>> {
+  const res = await api.get<{ ok: boolean; data: Array<TeacherExam | StudentExamMetadata> }>(
+    `/weeks/${weekId}/exams`
+  );
+  return res.data.data;
+}
+
+export async function createTeacherExam(
+  weekId: string,
+  input: TeacherExamDraftPayload
+): Promise<TeacherExam> {
+  const res = await api.post<{ ok: boolean; data: TeacherExam }>(`/weeks/${weekId}/exams`, input);
+  return res.data.data;
+}
+
+export async function updateTeacherExam(
+  examId: string,
+  input: TeacherExamDraftPayload
+): Promise<TeacherExam> {
+  const res = await api.put<{ ok: boolean; data: TeacherExam }>(`/exams/${examId}`, input);
+  return res.data.data;
+}
+
+export async function publishTeacherExam(
+  examId: string,
+  input: TeacherExamDraftPayload
+): Promise<TeacherExam> {
+  const res = await api.post<{ ok: boolean; data: TeacherExam }>(`/exams/${examId}/publish`, input);
+  return res.data.data;
+}
+
+export async function deleteTeacherExam(examId: string): Promise<void> {
+  await api.delete(`/exams/${examId}`);
+}
+
+export async function getExam(examId: string): Promise<TeacherExam | StudentExamMetadata> {
+  const res = await api.get<{ ok: boolean; data: TeacherExam | StudentExamMetadata }>(
+    `/exams/${examId}`
+  );
+  return res.data.data;
+}
+
+export async function startTeacherExam(examId: string): Promise<TeacherExamAttemptSummary> {
+  const res = await api.post<{ ok: boolean; data: TeacherExamAttemptSummary }>(
+    `/exams/${examId}/start`
+  );
+  return res.data.data;
+}
+
+export async function getMyExamAttempt(examId: string): Promise<TeacherExamAttemptSummary | null> {
+  const res = await api.get<{ ok: boolean; data: TeacherExamAttemptSummary | null }>(
+    `/exams/${examId}/attempts/me`
+  );
+  return res.data.data;
+}
+
+export async function saveExamAttemptAnswers(
+  attemptId: string,
+  answers: Record<string, unknown>
+): Promise<TeacherExamAttemptSummary> {
+  const res = await api.patch<{ ok: boolean; data: TeacherExamAttemptSummary }>(
+    `/exam-attempts/${attemptId}/answers`,
+    { answers }
+  );
+  return res.data.data;
+}
+
+export async function submitExamAttempt(
+  attemptId: string,
+  answers: Record<string, unknown>
+): Promise<TeacherExamAttemptSummary> {
+  const res = await api.post<{ ok: boolean; data: TeacherExamAttemptSummary }>(
+    `/exam-attempts/${attemptId}/submit`,
+    { answers }
+  );
+  return res.data.data;
+}
+
+export async function getTeacherExamReport(examId: string): Promise<TeacherExamReport> {
+  const res = await api.get<{ ok: boolean; data: TeacherExamReport }>(`/exams/${examId}/report`);
+  return res.data.data;
+}
+
+export async function uploadExamStudioPdfContext(
+  weekId: string,
+  pdfFile: File
+): Promise<{ text: string; numPages: number; truncated: boolean }> {
+  const form = new FormData();
+  form.append("pdf", pdfFile);
+  const res = await api.post<{
+    ok: boolean;
+    data: { text: string; numPages: number; truncated: boolean };
+  }>(`/weeks/${weekId}/exam-studio/pdf-context`, form, {
+    headers: { "Content-Type": "multipart/form-data" }
+  });
+  return res.data.data;
+}
+
+export async function sendExamStudioChat(input: {
+  weekId: string;
+  message: string;
+  currentDraft: TeacherExamDraftPayload;
+  sourceText?: string;
+}): Promise<ExamStudioProposal> {
+  const res = await api.post<{ ok: boolean; data: ExamStudioProposal }>(
+    `/weeks/${input.weekId}/exam-studio/chat`,
+    {
+      message: input.message,
+      currentDraft: input.currentDraft,
+      sourceText: input.sourceText
+    }
+  );
+  return res.data.data;
+}
+
+export type ExamStudioStreamStage =
+  | "PREPARING"
+  | "ANALYZING_SOURCE"
+  | "AI_THINKING"
+  | "VALIDATING_JSON"
+  | "APPLYING_TO_STUDIO"
+  | "COMPLETE";
+
+export type ExamStudioChatStreamEvent =
+  | {
+      type: "stage";
+      stage: ExamStudioStreamStage;
+      label: string;
+      progress: number;
+      detail?: string;
+    }
+  | {
+      type: "thought_delta";
+      text: string;
+    }
+  | {
+      type: "proposal";
+      data: ExamStudioProposal;
+      thoughtSummary?: string;
+    }
+  | {
+      type: "done";
+    }
+  | {
+      type: "error";
+      error: string;
+    };
+
+function handleExamStudioStreamLine(
+  line: string,
+  onEvent: (event: ExamStudioChatStreamEvent) => void
+): { proposal?: ExamStudioProposal; done?: boolean } {
+  const payload = JSON.parse(line) as ExamStudioChatStreamEvent;
+  if (payload.type === "error") {
+    throw new Error(payload.error || "시험 설계 스트리밍 처리 중 오류가 발생했습니다.");
+  }
+  onEvent(payload);
+  if (payload.type === "proposal") {
+    return { proposal: payload.data };
+  }
+  if (payload.type === "done") {
+    return { done: true };
+  }
+  return {};
+}
+
+export async function streamExamStudioChat(
+  input: {
+    weekId: string;
+    message: string;
+    currentDraft: TeacherExamDraftPayload;
+    sourceText?: string;
+  },
+  onEvent: (event: ExamStudioChatStreamEvent) => void,
+  signal?: AbortSignal
+): Promise<ExamStudioProposal> {
+  const response = await fetch(`/api/weeks/${input.weekId}/exam-studio/chat/stream`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json"
+    },
+    credentials: "include",
+    signal,
+    body: JSON.stringify({
+      message: input.message,
+      currentDraft: input.currentDraft,
+      sourceText: input.sourceText
+    })
+  });
+
+  if (!response.ok) {
+    throw parseFetchError(await response.text(), response.status);
+  }
+
+  if (!response.body) {
+    throw new Error("시험 설계 스트리밍 응답 본문이 비어 있습니다.");
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let finalProposal: ExamStudioProposal | null = null;
+  let sawDone = false;
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    let lineEnd = buffer.indexOf("\n");
+    while (lineEnd >= 0) {
+      const line = buffer.slice(0, lineEnd).trim();
+      buffer = buffer.slice(lineEnd + 1);
+      lineEnd = buffer.indexOf("\n");
+      if (!line) continue;
+      const handled = handleExamStudioStreamLine(line, onEvent);
+      if (handled.proposal) finalProposal = handled.proposal;
+      if (handled.done) sawDone = true;
+    }
+  }
+  buffer += decoder.decode();
+  const remainingLine = buffer.trim();
+  if (remainingLine) {
+    const handled = handleExamStudioStreamLine(remainingLine, onEvent);
+    if (handled.proposal) finalProposal = handled.proposal;
+    if (handled.done) sawDone = true;
+  }
+
+  if (!sawDone) {
+    throw new Error("시험 설계 스트리밍이 완료 이벤트 없이 종료되었습니다.");
+  }
+  if (!finalProposal) {
+    throw new Error("시험 설계 스트리밍 최종 제안을 받지 못했습니다.");
+  }
+
+  return finalProposal;
 }
 
 export async function getSessionByLecture(lectureId: string): Promise<{

@@ -8,6 +8,7 @@ import {
   updateAccount as updateAccountRequest,
   verifyEmail as verifyEmailRequest
 } from "../api/endpoints";
+import { clearExamStudioRecovery } from "../components/exams/examStudioRecovery";
 import { CurrentUser, UserRole } from "../types";
 
 type AuthStatus = "checking" | "guest" | "unverified" | "authenticated";
@@ -100,6 +101,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       refreshMe,
       login: async (input) => {
         const next = await loginRequest(input);
+        clearExamStudioRecovery();
         setUser(next);
         clearPendingVerificationEmail();
         setStatus("authenticated");
@@ -113,6 +115,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       },
       updateAccount: async (input) => {
         const result = await updateAccountRequest(input);
+        if (user?.id && user.id !== result.user.id) {
+          clearExamStudioRecovery();
+        }
         setUser(result.user);
         if (result.user.emailVerified) {
           clearPendingVerificationEmail();
@@ -136,6 +141,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         try {
           await logoutRequest();
         } finally {
+          clearExamStudioRecovery();
           setUser(null);
           clearPendingVerificationEmail();
           setStatus("guest");

@@ -10,6 +10,10 @@ import { SummaryService } from "./services/engine/SummaryService.js";
 import { ToolDispatcher } from "./services/engine/ToolDispatcher.js";
 import { AuthService } from "./services/auth/AuthService.js";
 import { createEmailSender } from "./services/auth/EmailSender.js";
+import { ConsoleExamLogger, ExamLogger } from "./services/exams/ExamLogger.js";
+import { ExamClock, SystemExamClock } from "./services/exams/ExamClock.js";
+import { TeacherExamGradingService } from "./services/exams/TeacherExamGradingService.js";
+import { TeacherExamService } from "./services/exams/TeacherExamService.js";
 import { GeminiBridgeClient } from "./services/llm/GeminiBridgeClient.js";
 import { PdfIngestService } from "./services/pdf/PdfIngestService.js";
 import { RequestEncryptionService } from "./services/security/RequestEncryptionService.js";
@@ -23,6 +27,10 @@ export interface ServerDeps {
   bridge: GeminiBridgeClient;
   pdfIngest: PdfIngestService;
   engine: OrchestrationEngine;
+  examClock?: ExamClock;
+  examLogger?: ExamLogger;
+  examGradingService?: TeacherExamGradingService;
+  examService?: TeacherExamService;
 }
 
 export async function createServerDeps(): Promise<ServerDeps> {
@@ -36,6 +44,10 @@ export async function createServerDeps(): Promise<ServerDeps> {
 
   const bridge = new GeminiBridgeClient();
   const pdfIngest = new PdfIngestService(store.getUploadDir());
+  const examClock = new SystemExamClock();
+  const examLogger = new ConsoleExamLogger();
+  const examGradingService = new TeacherExamGradingService(bridge);
+  const examService = new TeacherExamService(store, examGradingService, examClock, examLogger);
   const explainer = new ExplainerAgent(bridge);
   const qa = new QaAgent(bridge);
   const quizAgents = new QuizAgents(bridge);
@@ -62,7 +74,11 @@ export async function createServerDeps(): Promise<ServerDeps> {
     requestEncryption,
     bridge,
     pdfIngest,
-    engine
+    engine,
+    examClock,
+    examLogger,
+    examGradingService,
+    examService
   };
 }
 

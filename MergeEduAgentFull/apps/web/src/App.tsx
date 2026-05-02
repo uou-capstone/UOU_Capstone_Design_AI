@@ -3,6 +3,8 @@ import { ProtectedRoute } from "./auth/ProtectedRoute";
 import { RequireRole } from "./auth/RequireRole";
 import { ClassroomRoute } from "./routes/Classroom";
 import { ClassroomReportRoute } from "./routes/ClassroomReport";
+import { ExamReportRoute } from "./routes/ExamReport";
+import { ExamTakingRoute } from "./routes/ExamTaking";
 import { AccountSettingsRoute } from "./routes/AccountSettings";
 import { DashboardRoute } from "./routes/Dashboard";
 import { LoginRoute } from "./routes/Login";
@@ -29,6 +31,15 @@ export function App() {
           }
         />
         <Route path="/session/:lectureId" element={<SessionRoute />} />
+        <Route path="/exams/:examId" element={<ExamTakingRoute />} />
+        <Route
+          path="/exams/:examId/report"
+          element={
+            <RequireRole allow={["teacher"]}>
+              <ExamReportRoute />
+            </RequireRole>
+          }
+        />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

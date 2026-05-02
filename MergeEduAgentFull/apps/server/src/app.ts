@@ -7,6 +7,7 @@ import { loadAuth, requireSameOriginForUnsafeMethods } from "./middleware/auth.j
 import { requestEncryptionMiddleware } from "./middleware/requestEncryption.js";
 import { authRouter } from "./routes/auth.js";
 import { classroomsRouter } from "./routes/classrooms.js";
+import { examsRouter } from "./routes/exams.js";
 import { lecturesRouter } from "./routes/lectures.js";
 import { sessionRouter } from "./routes/session.js";
 import { studentsRouter } from "./routes/students.js";
@@ -41,6 +42,7 @@ export function createApp(deps: ServerDeps) {
   app.use("/api/classrooms", classroomsRouter(deps));
   app.use("/api", weeksRouter(deps));
   app.use("/api", lecturesRouter(deps));
+  app.use("/api", examsRouter(deps));
   app.use("/api", sessionRouter(deps));
 
   app.use(errorHandler);

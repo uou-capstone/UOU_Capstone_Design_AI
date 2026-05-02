@@ -57,6 +57,73 @@ export class PdfIngestService {
     }
   }
 
+  async extractBoundedTextFromBuffer(
+    buffer: Buffer,
+    options: { maxChars: number; maxPages: number; timeoutMs: number }
+  ): Promise<{ text: string; numPages: number; truncated: boolean }> {
+    const pages: string[] = [];
+    let truncated = false;
+    let timedOut = false;
+    const startedAt = Date.now();
+
+    const buildText = () => pages.join("\n\n").trim().slice(0, options.maxChars);
+    const parsePromise = pdf(buffer, {
+      pagerender: async (pageData: {
+        pageIndex?: number;
+        getTextContent: (arg: {
+          normalizeWhitespace: boolean;
+          disableCombineTextItems: boolean;
+        }) => Promise<{ items: Array<{ str: string }> }>;
+      }) => {
+        if (timedOut || pages.length >= options.maxPages || buildText().length >= options.maxChars) {
+          truncated = true;
+          throw new Error("PDF_BUDGET_EXCEEDED");
+        }
+        if (Date.now() - startedAt > options.timeoutMs) {
+          timedOut = true;
+          truncated = true;
+          throw new Error("PDF_BUDGET_EXCEEDED");
+        }
+        const textContent = await pageData.getTextContent({
+          normalizeWhitespace: true,
+          disableCombineTextItems: false
+        });
+        const text = textContent.items.map((i) => i.str).join(" ").trim();
+        pages.push(text);
+        if (buildText().length >= options.maxChars) {
+          truncated = true;
+          throw new Error("PDF_BUDGET_EXCEEDED");
+        }
+        return text;
+      }
+    });
+
+    try {
+      const timeout = new Promise<never>((_, reject) => {
+        setTimeout(() => {
+          timedOut = true;
+          truncated = true;
+          reject(new Error("PDF_BUDGET_EXCEEDED"));
+        }, options.timeoutMs);
+      });
+      const parsed = await Promise.race([parsePromise, timeout]);
+      return {
+        text: buildText(),
+        numPages: parsed.numpages || pages.length,
+        truncated
+      };
+    } catch (error) {
+      if (error instanceof Error && error.message === "PDF_BUDGET_EXCEEDED" && pages.length > 0) {
+        return {
+          text: buildText(),
+          numPages: pages.length,
+          truncated: true
+        };
+      }
+      throw error;
+    }
+  }
+
   async savePdf(lectureId: string, buffer: Buffer): Promise<string> {
     await fs.mkdir(this.uploadDir, { recursive: true });
     const fullPath = this.resolveUploadPath(`${lectureId}.pdf`);

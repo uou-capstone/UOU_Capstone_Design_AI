@@ -16,6 +16,8 @@ export function createStoragePaths(options: StoragePathOptions = {}) {
     lectures: path.join(dataDir, "lectures.json"),
     classroomReports: path.join(dataDir, "classroom-reports.json"),
     classroomReportCriteria: path.join(dataDir, "classroom-report-criteria.json"),
+    teacherExams: path.join(dataDir, "teacher-exams.json"),
+    teacherExamAttempts: path.join(dataDir, "teacher-exam-attempts.json"),
     quizResults: path.join(dataDir, "quiz-results.json"),
     users: path.join(dataDir, "users.json"),
     authSessions: path.join(dataDir, "auth-sessions.json"),

@@ -13,6 +13,10 @@ import {
   SessionState,
   StudentCompetencyReport,
   StudentReportCustomCriterion,
+  TeacherExam,
+  TeacherExamAttempt,
+  TeacherExamGrading,
+  TeacherExamRevision,
   User,
   Week
 } from "../../types/domain.js";
@@ -27,6 +31,22 @@ function now(): string {
 
 function id(prefix: string): string {
   return `${prefix}_${Math.random().toString(36).slice(2, 10)}`;
+}
+
+function copy<T>(value: T): T {
+  return JSON.parse(JSON.stringify(value)) as T;
+}
+
+function addMinutes(dateIso: string, minutes: number): string {
+  return new Date(new Date(dateIso).getTime() + minutes * 60_000).toISOString();
+}
+
+function addSeconds(dateIso: string, seconds: number): string {
+  return new Date(new Date(dateIso).getTime() + seconds * 1000).toISOString();
+}
+
+function minIso(a: string, b: string): string {
+  return new Date(a).getTime() <= new Date(b).getTime() ? a : b;
 }
 
 async function ensureFile(filePath: string, fallback: string): Promise<void> {
@@ -78,6 +98,43 @@ export interface QuizResultLogEntry {
   summaryMarkdown: string;
   createdAt: string;
 }
+
+export type ExamAttemptStartResult =
+  | {
+      ok: true;
+      attempt: TeacherExamAttempt;
+      exam: TeacherExam;
+      created: boolean;
+    }
+  | {
+      ok: false;
+      reason: "NOT_FOUND" | "NOT_PUBLISHED" | "UNAVAILABLE";
+    };
+
+export type ExamAttemptSaveResult =
+  | {
+      ok: true;
+      attempt: TeacherExamAttempt;
+      accepted: boolean;
+      reason?: "LATE_AFTER_GRACE" | "NOT_IN_PROGRESS";
+    }
+  | {
+      ok: false;
+      reason: "NOT_FOUND" | "FORBIDDEN";
+    };
+
+export type ExamAttemptClaimResult =
+  | {
+      ok: true;
+      attempt: TeacherExamAttempt;
+      shouldGrade: boolean;
+      submissionId?: string;
+      accepted: boolean;
+    }
+  | {
+      ok: false;
+      reason: "NOT_FOUND" | "FORBIDDEN" | "LATE_AFTER_GRACE";
+    };
 
 export class JsonStore {
   private readonly lock = new FileLock();
@@ -133,6 +190,8 @@ export class JsonStore {
     await ensureFile(this.paths.lectures, "[]");
     await ensureFile(this.paths.classroomReports, "[]");
     await ensureFile(this.paths.classroomReportCriteria, "[]");
+    await ensureFile(this.paths.teacherExams, "[]");
+    await ensureFile(this.paths.teacherExamAttempts, "[]");
     await ensureFile(this.paths.quizResults, "[]");
     await ensureFile(this.paths.users, "[]");
     await ensureFile(this.paths.authSessions, "[]");
@@ -141,6 +200,7 @@ export class JsonStore {
     await ensureFile(this.paths.inviteAuditLog, "[]");
     await ensureFile(this.paths.rateLimits, "[]");
     await this.migrateLectureUploadPaths();
+    await this.recoverOrphanTeacherExamAttempts();
   }
 
   private async migrateLectureUploadPaths(): Promise<void> {
@@ -198,6 +258,10 @@ export class JsonStore {
   }
 
   async deleteClassroom(classroomId: string): Promise<void> {
+    const weeks = await this.listWeeksByClassroom(classroomId);
+    const weekIds = weeks.map((w) => w.id);
+    await this.deleteTeacherExamsByWeekIds(weekIds);
+
     await this.withFileLock(this.paths.classrooms, async () => {
       const classrooms = await this.listClassrooms();
       await atomicWrite(
@@ -209,8 +273,6 @@ export class JsonStore {
     await this.deleteClassroomReportCriteria(classroomId);
     await this.deleteEnrollmentsByClassroom(classroomId);
 
-    const weeks = await this.listWeeksByClassroom(classroomId);
-    const weekIds = weeks.map((w) => w.id);
     await this.deleteWeeksBulk(weekIds);
   }
 
@@ -689,6 +751,396 @@ export class JsonStore {
     });
   }
 
+  private withTeacherExamLocks<T>(fn: () => Promise<T>): Promise<T> {
+    return this.withFileLock(this.paths.teacherExams, () =>
+      this.withFileLock(this.paths.teacherExamAttempts, fn)
+    );
+  }
+
+  private withWeekAndTeacherExamLocks<T>(fn: () => Promise<T>): Promise<T> {
+    return this.withFileLock(this.paths.weeks, () => this.withTeacherExamLocks(fn));
+  }
+
+  private async readTeacherExamsUnsafe(): Promise<TeacherExam[]> {
+    return readJson<TeacherExam[]>(this.paths.teacherExams, []);
+  }
+
+  private async readTeacherExamAttemptsUnsafe(): Promise<TeacherExamAttempt[]> {
+    return readJson<TeacherExamAttempt[]>(this.paths.teacherExamAttempts, []);
+  }
+
+  async listTeacherExamsByWeek(weekId: string): Promise<TeacherExam[]> {
+    const exams = await this.readTeacherExamsUnsafe();
+    return exams
+      .filter((exam) => exam.weekId === weekId)
+      .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+  }
+
+  async getTeacherExam(examId: string): Promise<TeacherExam | null> {
+    const exams = await this.readTeacherExamsUnsafe();
+    return exams.find((exam) => exam.id === examId) ?? null;
+  }
+
+  async createTeacherExam(input: {
+    classroomId: string;
+    weekId: string;
+    draftRevision: Omit<TeacherExamRevision, "version" | "createdAt" | "updatedAt">;
+  }): Promise<TeacherExam | null> {
+    return this.withWeekAndTeacherExamLocks(async () => {
+      const weeks = await readJson<Week[]>(this.paths.weeks, []);
+      const classrooms = await readJson<Classroom[]>(this.paths.classrooms, []);
+      const week = weeks.find((item) => item.id === input.weekId);
+      const classroom = classrooms.find((item) => item.id === input.classroomId);
+      if (!week || !classroom || week.classroomId !== classroom.id) return null;
+
+      const currentTime = now();
+      const draftRevision: TeacherExamRevision = {
+        ...copy(input.draftRevision),
+        version: 0,
+        createdAt: currentTime,
+        updatedAt: currentTime
+      };
+      const exam: TeacherExam = {
+        id: id("exam"),
+        classroomId: input.classroomId,
+        weekId: input.weekId,
+        status: "DRAFT",
+        draftRevision,
+        createdAt: currentTime,
+        updatedAt: currentTime
+      };
+      const exams = await this.readTeacherExamsUnsafe();
+      exams.push(exam);
+      await atomicWrite(this.paths.teacherExams, exams);
+      return exam;
+    });
+  }
+
+  async updateTeacherExamDraft(
+    examId: string,
+    draftRevision: Omit<TeacherExamRevision, "version" | "createdAt" | "updatedAt">
+  ): Promise<TeacherExam | null> {
+    return this.withTeacherExamLocks(async () => {
+      const exams = await this.readTeacherExamsUnsafe();
+      const index = exams.findIndex((exam) => exam.id === examId);
+      if (index === -1) return null;
+      const current = exams[index];
+      const currentTime = now();
+      const existingDraft = current.draftRevision;
+      const updatedDraft: TeacherExamRevision = {
+        ...copy(draftRevision),
+        version: existingDraft.version,
+        createdAt: existingDraft.createdAt,
+        updatedAt: currentTime
+      };
+      const updated: TeacherExam = {
+        ...current,
+        draftRevision: updatedDraft,
+        updatedAt: currentTime
+      };
+      exams[index] = updated;
+      await atomicWrite(this.paths.teacherExams, exams);
+      return updated;
+    });
+  }
+
+  async publishTeacherExam(
+    examId: string,
+    draftRevision: Omit<TeacherExamRevision, "version" | "createdAt" | "updatedAt">
+  ): Promise<TeacherExam | null> {
+    return this.withTeacherExamLocks(async () => {
+      const exams = await this.readTeacherExamsUnsafe();
+      const index = exams.findIndex((exam) => exam.id === examId);
+      if (index === -1) return null;
+      const current = exams[index];
+      const currentTime = now();
+      const nextVersion = (current.activePublishedVersion ?? 0) + 1;
+      const publishedRevision: TeacherExamRevision = {
+        ...copy(draftRevision),
+        version: nextVersion,
+        createdAt: currentTime,
+        updatedAt: currentTime
+      };
+      const updated: TeacherExam = {
+        ...current,
+        status: "PUBLISHED",
+        activePublishedVersion: nextVersion,
+        draftRevision: {
+          ...publishedRevision,
+          version: nextVersion
+        },
+        publishedRevision,
+        updatedAt: currentTime
+      };
+      exams[index] = updated;
+      await atomicWrite(this.paths.teacherExams, exams);
+      return updated;
+    });
+  }
+
+  async deleteTeacherExam(examId: string): Promise<boolean> {
+    return this.withTeacherExamLocks(async () => {
+      const exams = await this.readTeacherExamsUnsafe();
+      const attempts = await this.readTeacherExamAttemptsUnsafe();
+      const nextExams = exams.filter((exam) => exam.id !== examId);
+      const changed = nextExams.length !== exams.length;
+      await atomicWrite(
+        this.paths.teacherExamAttempts,
+        attempts.filter((attempt) => attempt.examId !== examId)
+      );
+      if (changed) {
+        await atomicWrite(this.paths.teacherExams, nextExams);
+      }
+      return changed;
+    });
+  }
+
+  async deleteTeacherExamsByWeekIds(weekIds: string[]): Promise<void> {
+    if (weekIds.length === 0) return;
+    await this.withTeacherExamLocks(async () => {
+      await this.deleteTeacherExamsByWeekIdsUnsafe(weekIds);
+    });
+  }
+
+  private async deleteTeacherExamsByWeekIdsUnsafe(weekIds: string[]): Promise<void> {
+    const weekSet = new Set(weekIds);
+    const exams = await this.readTeacherExamsUnsafe();
+    const removedExamIds = new Set(
+      exams.filter((exam) => weekSet.has(exam.weekId)).map((exam) => exam.id)
+    );
+    if (removedExamIds.size === 0) {
+      await this.recoverOrphanTeacherExamAttemptsUnsafe(exams);
+      return;
+    }
+    const attempts = await this.readTeacherExamAttemptsUnsafe();
+    await atomicWrite(
+      this.paths.teacherExamAttempts,
+      attempts.filter((attempt) => !removedExamIds.has(attempt.examId))
+    );
+    await atomicWrite(
+      this.paths.teacherExams,
+      exams.filter((exam) => !removedExamIds.has(exam.id))
+    );
+  }
+
+  private async recoverOrphanTeacherExamAttemptsUnsafe(exams: TeacherExam[]): Promise<void> {
+    const examIds = new Set(exams.map((exam) => exam.id));
+    const attempts = await this.readTeacherExamAttemptsUnsafe();
+    const next = attempts.filter((attempt) => examIds.has(attempt.examId));
+    if (next.length !== attempts.length) {
+      await atomicWrite(this.paths.teacherExamAttempts, next);
+    }
+  }
+
+  async recoverOrphanTeacherExamAttempts(): Promise<void> {
+    await this.withTeacherExamLocks(async () => {
+      const exams = await this.readTeacherExamsUnsafe();
+      await this.recoverOrphanTeacherExamAttemptsUnsafe(exams);
+    });
+  }
+
+  async listTeacherExamAttemptsByExam(examId: string): Promise<TeacherExamAttempt[]> {
+    const attempts = await this.readTeacherExamAttemptsUnsafe();
+    return attempts.filter((attempt) => attempt.examId === examId);
+  }
+
+  async getTeacherExamAttempt(attemptId: string): Promise<TeacherExamAttempt | null> {
+    const attempts = await this.readTeacherExamAttemptsUnsafe();
+    return attempts.find((attempt) => attempt.id === attemptId) ?? null;
+  }
+
+  async getTeacherExamAttemptForStudent(
+    examId: string,
+    studentUserId: string
+  ): Promise<TeacherExamAttempt | null> {
+    const attempts = await this.readTeacherExamAttemptsUnsafe();
+    return (
+      attempts.find(
+        (attempt) => attempt.examId === examId && attempt.studentUserId === studentUserId
+      ) ?? null
+    );
+  }
+
+  async hasTeacherExamAttempts(examId: string): Promise<boolean> {
+    const attempts = await this.readTeacherExamAttemptsUnsafe();
+    return attempts.some((attempt) => attempt.examId === examId);
+  }
+
+  async getOrCreateExamAttemptForStudent(
+    examId: string,
+    studentUserId: string,
+    atIso: string
+  ): Promise<ExamAttemptStartResult> {
+    return this.withTeacherExamLocks(async () => {
+      const exams = await this.readTeacherExamsUnsafe();
+      const exam = exams.find((item) => item.id === examId);
+      if (!exam) return { ok: false, reason: "NOT_FOUND" };
+
+      let attempts = await this.readTeacherExamAttemptsUnsafe();
+      const owned = attempts
+        .filter((attempt) => attempt.examId === examId && attempt.studentUserId === studentUserId)
+        .sort((a, b) => a.startedAt.localeCompare(b.startedAt));
+      if (owned.length > 0) {
+        const keeper = owned[0];
+        if (owned.length > 1) {
+          const keepId = keeper.id;
+          attempts = attempts.filter(
+            (attempt) =>
+              attempt.id === keepId ||
+              !(attempt.examId === examId && attempt.studentUserId === studentUserId)
+          );
+          await atomicWrite(this.paths.teacherExamAttempts, attempts);
+        }
+        return { ok: true, attempt: keeper, exam, created: false };
+      }
+
+      const revision =
+        exam.status === "PUBLISHED" &&
+        exam.publishedRevision &&
+        exam.activePublishedVersion === exam.publishedRevision.version
+          ? exam.publishedRevision
+          : null;
+      if (!revision) return { ok: false, reason: "NOT_PUBLISHED" };
+      if (atIso < revision.availableFrom || atIso > revision.availableUntil) {
+        return { ok: false, reason: "UNAVAILABLE" };
+      }
+
+      const deadlineAt = minIso(
+        addMinutes(atIso, revision.timeLimitMinutes),
+        revision.availableUntil
+      );
+      const attempt: TeacherExamAttempt = {
+        id: id("att"),
+        examId,
+        studentUserId,
+        status: "IN_PROGRESS",
+        examVersion: revision.version,
+        examSnapshot: copy(revision),
+        settingsSnapshot: {
+          title: revision.title,
+          descriptionMarkdown: revision.descriptionMarkdown,
+          availableFrom: revision.availableFrom,
+          availableUntil: revision.availableUntil,
+          timeLimitMinutes: revision.timeLimitMinutes,
+          passScoreRatio: revision.passScoreRatio,
+          aiGradingEnabled: revision.aiGradingEnabled
+        },
+        startedAt: atIso,
+        deadlineAt,
+        answers: {}
+      };
+      attempts.push(attempt);
+      await atomicWrite(this.paths.teacherExamAttempts, attempts);
+      return { ok: true, attempt, exam, created: true };
+    });
+  }
+
+  async saveExamAttemptAnswers(
+    attemptId: string,
+    studentUserId: string,
+    answers: Record<string, unknown>,
+    atIso: string
+  ): Promise<ExamAttemptSaveResult> {
+    return this.withFileLock(this.paths.teacherExamAttempts, async () => {
+      const attempts = await this.readTeacherExamAttemptsUnsafe();
+      const index = attempts.findIndex((attempt) => attempt.id === attemptId);
+      if (index === -1) return { ok: false, reason: "NOT_FOUND" };
+      const current = attempts[index];
+      if (current.studentUserId !== studentUserId) return { ok: false, reason: "FORBIDDEN" };
+      if (current.status !== "IN_PROGRESS") {
+        return { ok: true, attempt: current, accepted: false, reason: "NOT_IN_PROGRESS" };
+      }
+      const cutoff = addSeconds(current.deadlineAt, 5);
+      if (atIso > cutoff) {
+        return { ok: true, attempt: current, accepted: false, reason: "LATE_AFTER_GRACE" };
+      }
+      const updated: TeacherExamAttempt = {
+        ...current,
+        answers: copy(answers),
+        lastSavedAt: atIso,
+        lastAcceptedAnswerSaveAt: atIso
+      };
+      attempts[index] = updated;
+      await atomicWrite(this.paths.teacherExamAttempts, attempts);
+      return { ok: true, attempt: updated, accepted: true };
+    });
+  }
+
+  async claimExamAttemptSubmission(
+    attemptId: string,
+    studentUserId: string,
+    answers: Record<string, unknown> | undefined,
+    atIso: string
+  ): Promise<ExamAttemptClaimResult> {
+    return this.withFileLock(this.paths.teacherExamAttempts, async () => {
+      const attempts = await this.readTeacherExamAttemptsUnsafe();
+      const index = attempts.findIndex((attempt) => attempt.id === attemptId);
+      if (index === -1) return { ok: false, reason: "NOT_FOUND" };
+      const current = attempts[index];
+      if (current.studentUserId !== studentUserId) return { ok: false, reason: "FORBIDDEN" };
+      if (current.status === "GRADING" || current.status === "GRADED") {
+        return {
+          ok: true,
+          attempt: current,
+          shouldGrade: false,
+          submissionId: current.submissionId,
+          accepted: false
+        };
+      }
+      const cutoff = addSeconds(current.deadlineAt, 5);
+      const accepted = atIso <= cutoff;
+      if (!accepted && answers !== undefined && !current.lastAcceptedAnswerSaveAt) {
+        return { ok: false, reason: "LATE_AFTER_GRACE" };
+      }
+      const acceptedAnswers = accepted && answers ? copy(answers) : current.answers;
+      const submissionId = id("sub");
+      const updated: TeacherExamAttempt = {
+        ...current,
+        status: "GRADING",
+        answers: acceptedAnswers,
+        submissionId,
+        submittedAt: atIso,
+        gradingStartedAt: atIso,
+        gradingLeaseExpiresAt: addSeconds(atIso, 90),
+        ...(accepted
+          ? {
+              lastSavedAt: atIso,
+              lastAcceptedAnswerSaveAt: atIso
+            }
+          : {})
+      };
+      attempts[index] = updated;
+      await atomicWrite(this.paths.teacherExamAttempts, attempts);
+      return { ok: true, attempt: updated, shouldGrade: true, submissionId, accepted };
+    });
+  }
+
+  async commitExamAttemptGrading(
+    attemptId: string,
+    submissionId: string,
+    grading: TeacherExamGrading,
+    atIso: string
+  ): Promise<TeacherExamAttempt | null> {
+    return this.withFileLock(this.paths.teacherExamAttempts, async () => {
+      const attempts = await this.readTeacherExamAttemptsUnsafe();
+      const index = attempts.findIndex((attempt) => attempt.id === attemptId);
+      if (index === -1) return null;
+      const current = attempts[index];
+      if (current.submissionId !== submissionId || current.status !== "GRADING") {
+        return current;
+      }
+      const updated: TeacherExamAttempt = {
+        ...current,
+        status: "GRADED",
+        gradedAt: atIso,
+        grading: copy(grading)
+      };
+      attempts[index] = updated;
+      await atomicWrite(this.paths.teacherExamAttempts, attempts);
+      return updated;
+    });
+  }
+
   async appendInviteAuditLog(entry: Omit<InviteAuditLogEntry, "id" | "createdAt">): Promise<void> {
     await this.withFileLock(this.paths.inviteAuditLog, async () => {
       const entries = await readJson<InviteAuditLogEntry[]>(this.paths.inviteAuditLog, []);
@@ -748,7 +1200,8 @@ export class JsonStore {
   async deleteWeeksBulk(weekIds: string[]): Promise<void> {
     if (weekIds.length === 0) return;
     const weekSet = new Set(weekIds);
-    await this.withFileLock(this.paths.weeks, async () => {
+    await this.withWeekAndTeacherExamLocks(async () => {
+      await this.deleteTeacherExamsByWeekIdsUnsafe(weekIds);
       const weeks = await readJson<Week[]>(this.paths.weeks, []);
       await atomicWrite(
         this.paths.weeks,

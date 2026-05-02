@@ -1,6 +1,14 @@
 import axios from "axios";
 import { appConfig } from "../../config.js";
-import { GradingResult, LectureItem, QuizJson, QuizType } from "../../types/domain.js";
+import {
+  ExamStudioProposal,
+  GradingResult,
+  LectureItem,
+  QuizJson,
+  QuizType,
+  TeacherExamGrading,
+  TeacherExamRevision
+} from "../../types/domain.js";
 
 interface BridgeContentPart {
   text?: string;
@@ -435,6 +443,82 @@ export class GeminiBridgeClient {
       grading: streamed.data,
       thoughtSummary: streamed.thoughtSummary
     };
+  }
+
+  async examStudioChat(input: {
+    model: string;
+    message: string;
+    currentDraft: unknown;
+    currentKstIso: string;
+    timeZone: string;
+    sourceText?: string;
+    responseJsonSchema: Record<string, unknown>;
+  }): Promise<{ proposal: ExamStudioProposal; thoughtSummary: string }> {
+    try {
+      const response = await this.http.post<BridgeResponse<ExamStudioProposal>>(
+        "/bridge/exam_studio_chat",
+        input
+      );
+      if (!response.data.ok || !response.data.data) {
+        this.throwClientError("exam_studio_chat", 502, "AI bridge failed to build exam proposal", "bridge");
+      }
+      return {
+        proposal: response.data.data,
+        thoughtSummary: String(response.data.thoughtSummary ?? "")
+      };
+    } catch (error) {
+      this.rethrowBridgeError("exam_studio_chat", error);
+    }
+  }
+
+  async examStudioChatStream(
+      input: {
+        model: string;
+        message: string;
+        currentDraft: unknown;
+        currentKstIso: string;
+        timeZone: string;
+        sourceText?: string;
+        responseJsonSchema: Record<string, unknown>;
+      },
+    onDelta?: (delta: { channel: StreamChannel; text: string }) => void,
+    signal?: AbortSignal
+  ): Promise<{ proposal: ExamStudioProposal; thoughtSummary: string }> {
+    const streamed = await this.streamBridge<ExamStudioProposal>(
+      "exam_studio_chat_stream",
+      "/bridge/exam_studio_chat_stream",
+      input,
+      onDelta,
+      appConfig.examStudioAiTimeoutMs,
+      signal
+    );
+    if (!streamed.data) {
+      this.throwClientError("exam_studio_chat_stream", 502, "AI bridge did not return exam proposal JSON", "bridge");
+    }
+    return {
+      proposal: streamed.data,
+      thoughtSummary: streamed.thoughtSummary
+    };
+  }
+
+  async gradeTeacherExam(input: {
+    model: string;
+    exam: TeacherExamRevision;
+    answers: Record<string, unknown>;
+    responseJsonSchema: Record<string, unknown>;
+  }): Promise<TeacherExamGrading> {
+    try {
+      const response = await this.http.post<BridgeResponse<TeacherExamGrading>>(
+        "/bridge/grade_teacher_exam",
+        input
+      );
+      if (!response.data.ok || !response.data.data) {
+        this.throwClientError("grade_teacher_exam", 502, "AI bridge failed to grade teacher exam", "bridge");
+      }
+      return response.data.data;
+    } catch (error) {
+      this.rethrowBridgeError("grade_teacher_exam", error);
+    }
   }
 
   async orchestratorThoughtStream(

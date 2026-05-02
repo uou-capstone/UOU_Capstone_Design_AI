@@ -120,6 +120,23 @@ class StudentReportChatRequest(BaseModel):
     prompt: str
 
 
+class ExamStudioChatRequest(BaseModel):
+    model: str
+    message: str
+    currentDraft: dict[str, Any]
+    currentKstIso: str | None = None
+    timeZone: str | None = None
+    sourceText: str | None = None
+    responseJsonSchema: dict[str, Any] | None = None
+
+
+class GradeTeacherExamRequest(BaseModel):
+    model: str
+    exam: dict[str, Any]
+    answers: dict[str, Any]
+    responseJsonSchema: dict[str, Any] | None = None
+
+
 app = FastAPI(title="MergeEdu Gemini Bridge", version="1.0.0")
 
 _CACHE_TTL_SECONDS = int(os.getenv("GEMINI_CACHE_TTL_SECONDS", "86400"))
@@ -240,6 +257,20 @@ def _thinking_config() -> types.GenerateContentConfig:
     return types.GenerateContentConfig(
         thinking_config=types.ThinkingConfig(include_thoughts=True)
     )
+
+
+def _exam_studio_generation_config(response_json_schema: dict[str, Any] | None) -> types.GenerateContentConfig:
+    kwargs: dict[str, Any] = {
+        "thinking_config": types.ThinkingConfig(
+            include_thoughts=False,
+            thinking_level=types.ThinkingLevel.MINIMAL,
+        ),
+        "http_options": types.HttpOptions(timeout=30000),
+        "response_mime_type": "application/json",
+    }
+    if response_json_schema:
+        kwargs["response_json_schema"] = response_json_schema
+    return types.GenerateContentConfig(**kwargs)
 
 
 def _cache_key(file_ref: FileRef, model: str) -> tuple[str, str]:
@@ -383,17 +414,10 @@ def _iter_prompt_stream_events(
     answer_chunks: list[str] = []
 
     try:
-        config_kwargs: dict[str, Any] = {
-            "thinking_config": types.ThinkingConfig(include_thoughts=True),
-        }
-        if response_json_schema is not None:
-            config_kwargs["response_mime_type"] = "application/json"
-            config_kwargs["response_json_schema"] = response_json_schema
-
         stream = client.models.generate_content_stream(
             model=model,
             contents=[prompt],
-            config=types.GenerateContentConfig(**config_kwargs),
+            config=_exam_studio_generation_config(response_json_schema),
         )
 
         for chunk in stream:
@@ -690,6 +714,204 @@ def grade_quiz(request: GradeQuizRequest) -> dict[str, Any]:
         parsed = _extract_json(text)
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=500, detail=f"Failed to parse grading JSON: {exc}") from exc
+
+    return {
+        "ok": True,
+        "content": content,
+        "data": parsed,
+        "thoughtSummary": _thought_summary_text(content),
+    }
+
+
+def _build_exam_studio_prompt(request: ExamStudioChatRequest) -> str:
+    current_kst_iso = request.currentKstIso or "(서버 기준 현재 시간 없음)"
+    time_zone = request.timeZone or "Asia/Seoul"
+    return f"""
+너는 교사용 LMS 시험 제작 스튜디오의 보조 에이전트다.
+반드시 JSON만 출력하라. JSON 외 텍스트, 코드블록, 설명 문장을 절대 출력하지 마라.
+출력 스키마:
+{{
+  "answerMarkdown": "교사에게 그대로 보여줄 짧은 한국어 markdown 답변",
+  "operations": [
+    {{
+      "method": "patchExamSettings",
+      "params": {{
+        "title": "선택",
+        "availableFrom": "ISO-8601 선택",
+        "availableUntil": "ISO-8601 선택",
+        "timeLimitMinutes": 30
+      }}
+    }},
+    {{
+      "method": "appendQuestions",
+      "params": {{
+        "questions": []
+      }}
+    }},
+    {{
+      "method": "replaceQuestion",
+      "params": {{
+        "replaceQuestionId": "기존 문항 id",
+        "question": {{}}
+      }}
+    }}
+  ],
+  "source": "AI"
+}}
+
+규칙:
+- operations는 브라우저의 저장 전 draft에 즉시 반영된다. 단, 실제 서버 저장/게시 여부는 교사가 별도 버튼으로 결정한다.
+- 교사가 시작/종료/제한 시간/제목/설명/문항을 요청하면 반드시 operations에 적절한 method와 params를 넣어라.
+- 답변만 필요하고 수정할 사항이 없으면 operations를 빈 배열 []로 둔다.
+- 설정 변경은 patchExamSettings에 넣고, 문항 추가는 appendQuestions에 넣고, 기존 문항 수정은 replaceQuestion에 넣어라.
+- patchExamSettings를 사용할 때 params가 비어 있으면 실패다. 변경할 필드를 반드시 넣어라.
+- appendQuestions를 사용할 때 params.questions가 없거나 비어 있으면 실패다.
+- replaceQuestion을 사용할 때 params.replaceQuestionId와 params.question이 없으면 실패다.
+- settingsPatch, appendQuestions, replaceQuestionId 같은 top-level legacy mutation 필드는 출력하지 마라.
+- 문제 유형은 MCQ, OX, SHORT, ESSAY 중 하나만 사용한다.
+- MCQ는 choices와 answer.choiceId를 포함한다.
+- OX는 answer.value를 포함한다.
+- SHORT는 referenceAnswer.text 또는 rubricMarkdown을 포함한다.
+- ESSAY는 rubricMarkdown을 반드시 포함한다.
+- points는 0.5~100 사이로 둔다.
+- 상대 날짜/시간 표현은 현재 시간과 time zone을 기준으로 직접 판단하라.
+- 시작 시각만 바꾸라는 요청이면 currentDraft.timeLimitMinutes를 유지하고 availableUntil을 availableFrom + timeLimitMinutes로 함께 제안하라.
+- 사용자가 종료 시각, 시험 기간, 제한 시간을 명시하면 그 지시를 우선하라.
+- 시간 값은 timezone을 포함한 ISO-8601 문자열로 출력하라.
+- 예: 현재 시간이 2026-05-02T17:35:00+09:00이고 currentDraft.timeLimitMinutes가 30일 때 "내일 오후 3시로 바꿔줘"라는 요청은 patchExamSettings params에 availableFrom="2026-05-03T15:00:00+09:00", availableUntil="2026-05-03T15:30:00+09:00", timeLimitMinutes=30을 넣어야 한다.
+- 실제 params에 없는 변경을 answerMarkdown에서 변경했다고 말하지 마라.
+
+현재 시간:
+{{
+  "currentKstIso": "{current_kst_iso}",
+  "timeZone": "{time_zone}"
+}}
+
+현재 draft:
+{json.dumps(request.currentDraft, ensure_ascii=False)}
+
+첨부/붙여넣기 자료:
+{request.sourceText or "(자료 없음)"}
+
+교사 메시지:
+{request.message}
+""".strip()
+
+
+@app.post("/bridge/exam_studio_chat")
+def exam_studio_chat(request: ExamStudioChatRequest) -> dict[str, Any]:
+    client = _get_client()
+    prompt = _build_exam_studio_prompt(request)
+
+    try:
+        response = client.models.generate_content(
+            model=request.model,
+            contents=[prompt],
+            config=_exam_studio_generation_config(request.responseJsonSchema),
+        )
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=500, detail=f"Gemini exam studio failed: {exc}") from exc
+
+    content = _response_content_dict(response)
+    text = _content_text(content)
+    try:
+        parsed = _extract_json(text)
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=500, detail=f"Failed to parse exam proposal JSON: {exc}") from exc
+
+    return {
+        "ok": True,
+        "content": content,
+        "data": parsed,
+        "thoughtSummary": _thought_summary_text(content),
+    }
+
+
+@app.post("/bridge/exam_studio_chat_stream")
+def exam_studio_chat_stream(request: ExamStudioChatRequest) -> StreamingResponse:
+    client = _get_client()
+    prompt = _build_exam_studio_prompt(request)
+
+    def generator() -> Iterator[bytes]:
+        yield _ndjson_line({"type": "thought_delta", "text": "시험 스튜디오 JSON 응답을 생성하고 있습니다."})
+        try:
+            response = client.models.generate_content(
+                model=request.model,
+                contents=[prompt],
+                config=_exam_studio_generation_config(request.responseJsonSchema),
+            )
+        except Exception as exc:  # noqa: BLE001
+            yield _ndjson_line({"type": "error", "error": f"Gemini exam studio failed: {exc}"})
+            return
+
+        content = _response_content_dict(response)
+        answer_text = _content_text(content)
+        try:
+            parsed = _extract_json(answer_text)
+        except Exception as exc:  # noqa: BLE001
+            yield _ndjson_line({"type": "error", "error": f"Failed to parse exam proposal JSON: {exc}"})
+            return
+        yield _ndjson_line(
+            {
+                "type": "done",
+                "content": {
+                    "role": "model",
+                    "parts": [{"text": answer_text}],
+                },
+                "answerText": answer_text,
+                "thoughtSummary": "",
+                "data": parsed,
+            }
+        )
+
+    return StreamingResponse(generator(), media_type="application/x-ndjson")
+
+
+@app.post("/bridge/grade_teacher_exam")
+def grade_teacher_exam(request: GradeTeacherExamRequest) -> dict[str, Any]:
+    client = _get_client()
+    prompt = f"""
+다음 교사용 시험과 학생 답안을 채점하고 JSON만 출력하라.
+점수는 각 문항 points 범위 안에서 엄격하게 매긴다.
+서술형은 rubricMarkdown과 modelAnswerMarkdown을 우선 기준으로 삼는다.
+스키마:
+{{
+  "totalScore": number,
+  "maxScore": number,
+  "scoreRatio": number,
+  "items": [
+    {{"questionId": "...", "score": number, "maxScore": number, "verdict": "CORRECT|WRONG|PARTIAL", "feedbackMarkdown": "..."}}
+  ],
+  "summaryMarkdown": "...",
+  "gradingSource": "AI"
+}}
+
+시험:
+{json.dumps(request.exam, ensure_ascii=False)}
+
+학생 답안:
+{json.dumps(request.answers, ensure_ascii=False)}
+""".strip()
+
+    try:
+        response = client.models.generate_content(
+            model=request.model,
+            contents=[prompt],
+            config=types.GenerateContentConfig(
+                thinking_config=types.ThinkingConfig(include_thoughts=True),
+                response_mime_type="application/json",
+                response_json_schema=request.responseJsonSchema,
+            ),
+        )
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=500, detail=f"Gemini teacher exam grading failed: {exc}") from exc
+
+    content = _response_content_dict(response)
+    text = _content_text(content)
+    try:
+        parsed = _extract_json(text)
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=500, detail=f"Failed to parse teacher exam grading JSON: {exc}") from exc
 
     return {
         "ok": True,

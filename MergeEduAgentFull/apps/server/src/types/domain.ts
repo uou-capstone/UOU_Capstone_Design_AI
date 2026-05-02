@@ -224,6 +224,156 @@ export interface GradingResult {
   summaryMarkdown: string;
 }
 
+export type TeacherExamStatus = "DRAFT" | "PUBLISHED";
+export type TeacherExamQuestionType = "MCQ" | "OX" | "SHORT" | "ESSAY";
+export type TeacherExamAttemptStatus = "IN_PROGRESS" | "GRADING" | "GRADED";
+export type TeacherExamGradingSource = "AI" | "DETERMINISTIC_FALLBACK";
+
+export interface TeacherExamChoice {
+  id: string;
+  textMarkdown: string;
+}
+
+export interface TeacherExamQuestion {
+  id: string;
+  type: TeacherExamQuestionType;
+  promptMarkdown: string;
+  points: number;
+  choices?: TeacherExamChoice[];
+  answer?: {
+    choiceId?: string;
+    value?: boolean;
+  };
+  referenceAnswer?: {
+    text: string;
+  };
+  rubricMarkdown?: string;
+  modelAnswerMarkdown?: string;
+  explanationMarkdown?: string;
+}
+
+export interface TeacherExamRevision {
+  version: number;
+  title: string;
+  descriptionMarkdown: string;
+  availableFrom: IsoString;
+  availableUntil: IsoString;
+  timeLimitMinutes: number;
+  passScoreRatio: number;
+  aiGradingEnabled: boolean;
+  questions: TeacherExamQuestion[];
+  createdAt: IsoString;
+  updatedAt: IsoString;
+}
+
+export interface TeacherExam {
+  id: string;
+  classroomId: string;
+  weekId: string;
+  status: TeacherExamStatus;
+  activePublishedVersion?: number;
+  draftRevision: TeacherExamRevision;
+  publishedRevision?: TeacherExamRevision;
+  createdAt: IsoString;
+  updatedAt: IsoString;
+}
+
+export interface TeacherExamSettingsSnapshot {
+  title: string;
+  descriptionMarkdown: string;
+  availableFrom: IsoString;
+  availableUntil: IsoString;
+  timeLimitMinutes: number;
+  passScoreRatio: number;
+  aiGradingEnabled: boolean;
+}
+
+export interface TeacherExamGradingItem {
+  questionId: string;
+  score: number;
+  maxScore: number;
+  verdict: "CORRECT" | "WRONG" | "PARTIAL";
+  feedbackMarkdown: string;
+}
+
+export interface TeacherExamGrading {
+  totalScore: number;
+  maxScore: number;
+  scoreRatio: number;
+  items: TeacherExamGradingItem[];
+  summaryMarkdown: string;
+  gradingSource: TeacherExamGradingSource;
+  fallback?: boolean;
+}
+
+export interface TeacherExamAttempt {
+  id: string;
+  examId: string;
+  studentUserId: string;
+  status: TeacherExamAttemptStatus;
+  examVersion: number;
+  examSnapshot: TeacherExamRevision;
+  settingsSnapshot: TeacherExamSettingsSnapshot;
+  submissionId?: string;
+  gradingStartedAt?: IsoString;
+  gradingLeaseExpiresAt?: IsoString;
+  startedAt: IsoString;
+  deadlineAt: IsoString;
+  submittedAt?: IsoString;
+  gradedAt?: IsoString;
+  lastSavedAt?: IsoString;
+  lastAcceptedAnswerSaveAt?: IsoString;
+  answers: Record<string, unknown>;
+  grading?: TeacherExamGrading;
+}
+
+export interface ExamStudioProposal {
+  answerMarkdown?: string;
+  replyMarkdown: string;
+  operations?: ExamStudioOperation[];
+  settingsPatch?: Partial<
+    Pick<
+      TeacherExamRevision,
+      | "title"
+      | "descriptionMarkdown"
+      | "availableFrom"
+      | "availableUntil"
+      | "timeLimitMinutes"
+      | "passScoreRatio"
+      | "aiGradingEnabled"
+    >
+  >;
+  appendQuestions?: TeacherExamQuestion[];
+  replaceQuestionId?: string;
+  fallback?: boolean;
+  source?: "AI" | "AI_UNAVAILABLE";
+}
+
+export type ExamStudioOperation =
+  | {
+      method: "patchExamSettings";
+      params: Partial<
+        Pick<
+          TeacherExamRevision,
+          | "title"
+          | "descriptionMarkdown"
+          | "availableFrom"
+          | "availableUntil"
+          | "timeLimitMinutes"
+          | "passScoreRatio"
+          | "aiGradingEnabled"
+        >
+      >;
+    }
+  | {
+      method: "appendQuestions";
+      params: { questions: TeacherExamQuestion[] };
+    }
+  | {
+      method: "replaceQuestion";
+      params: { replaceQuestionId: string; question: TeacherExamQuestion };
+    };
+
 export interface QuizRecord {
   id: string;
   quizType: QuizType;
