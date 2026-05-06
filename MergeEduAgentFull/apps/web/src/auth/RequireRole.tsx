@@ -12,7 +12,7 @@ export function RequireRole({
   const { user } = useAuth();
   if (!user || !allow.includes(user.role)) {
     return (
-      <main className="page-shell">
+      <main className="page-shell" data-testid="app-shell-content">
         <section className="card alert alert-error">
           이 기능을 사용할 권한이 없습니다.
         </section>

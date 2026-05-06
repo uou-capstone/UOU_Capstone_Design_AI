@@ -22,6 +22,10 @@ import { MisconceptionRepairAgent } from "../agents/MisconceptionRepairAgent.js"
 import { QaAgent } from "../agents/QaAgent.js";
 import { QuizAgents } from "../agents/QuizAgents.js";
 import {
+  advanceLearningProgressAfterExplanation,
+  resolveLearningProgressPage
+} from "../learningProgress.js";
+import {
   applyLearnerMemoryWrite,
   buildIntegratedMemoryDigest,
   createInitialIntegratedMemory
@@ -877,7 +881,7 @@ export class ToolDispatcher {
           id: makeId("fb"),
           createdAt: nowIso(),
           page,
-          progressText: progressText(state.currentPage),
+          progressText: progressText(resolveLearningProgressPage(state, maxPage)),
           learnerLevel: state.learnerModel.level,
           notesMarkdown: `- ${hint}`
         };
@@ -933,6 +937,7 @@ export class ToolDispatcher {
           options?.abortSignal
         );
         const markdown = explanation.markdown;
+        advanceLearningProgressAfterExplanation(state, page, maxPage);
         pageState.status = "EXPLAINED";
         pageState.explainSummary = markdown.slice(0, 300);
         pageState.explainMarkdown = markdown.slice(0, 12000);
@@ -1052,7 +1057,7 @@ export class ToolDispatcher {
           id: makeId("fb"),
           createdAt: nowIso(),
           page,
-          progressText: progressText(state.currentPage),
+          progressText: progressText(resolveLearningProgressPage(state, maxPage)),
           learnerLevel: state.learnerModel.level,
           notesMarkdown: `- 오답 교정 완료: ${intervention.focusConcepts.join(", ") || "현재 개념"}`
         });

@@ -37,6 +37,7 @@ const MIN_ZOOM_RATIO = 0.7;
 const MAX_ZOOM_RATIO = 2;
 const ZOOM_SLIDER_STEP = 0.01;
 const PAN_MOVE_THRESHOLD = 3;
+const FIT_SCALE_PADDING_RATIO = 0.96;
 
 function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
@@ -214,7 +215,7 @@ export function PdfViewer({ pdfUrl, currentPage, knownNumPages, onPageChange }: 
     const updateSize = () => {
       const nextSize = {
         width: Math.max(320, element.clientWidth),
-        height: Math.max(360, element.clientHeight)
+        height: Math.max(240, element.clientHeight)
       };
       setViewportInset(getContentInset(element));
       const previousSize = viewportSizeRef.current;
@@ -298,7 +299,7 @@ export function PdfViewer({ pdfUrl, currentPage, knownNumPages, onPageChange }: 
   const baseScale = useMemo(() => {
     const horizontalFit = (viewportSize.width - viewportInset.horizontal) / pageSize.width;
     const verticalFit = (viewportSize.height - viewportInset.vertical) / pageSize.height;
-    const fit = Math.min(horizontalFit, verticalFit);
+    const fit = Math.min(horizontalFit, verticalFit) * FIT_SCALE_PADDING_RATIO;
     return clamp(Number.isFinite(fit) ? fit : 1, 0.1, 4);
   }, [
     viewportInset.horizontal,
@@ -410,10 +411,27 @@ export function PdfViewer({ pdfUrl, currentPage, knownNumPages, onPageChange }: 
   return (
     <section className="card pdf-viewer-shell" data-testid="pdf-viewer-shell">
       <div className="pdf-toolbar">
-        <strong>PDF Viewer</strong>
+        <div className="pdf-toolbar-title">
+          <span className="pdf-toolbar-icon" aria-hidden="true">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+              <path
+                d="M7 3h7l4 4v14H7V3Z"
+                stroke="currentColor"
+                strokeWidth="1.8"
+                strokeLinejoin="round"
+              />
+              <path d="M14 3v5h4" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" />
+              <path d="M10 13h5M10 17h5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+            </svg>
+          </span>
+          <strong>PDF Viewer</strong>
+        </div>
         <div className="pdf-toolbar-controls">
           <button className="btn ghost" onClick={() => onPageChange(Math.max(1, currentPage - 1))} disabled={!canPrev}>
-            이전
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+              <path d="M15 18l-6-6 6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+            <span>이전</span>
           </button>
           <span className="pdf-page-indicator">
             {currentPage} / {totalPages} 페이지
@@ -423,7 +441,10 @@ export function PdfViewer({ pdfUrl, currentPage, knownNumPages, onPageChange }: 
             onClick={() => onPageChange(clamp(currentPage + 1, 1, totalPages))}
             disabled={!canNext}
           >
-            다음
+            <span>다음</span>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+              <path d="M9 6l6 6-6 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
           </button>
           <label className="pdf-zoom-control">
             <span>확대</span>

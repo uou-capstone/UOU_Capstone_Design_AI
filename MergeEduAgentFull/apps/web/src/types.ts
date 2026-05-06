@@ -30,6 +30,20 @@ export interface ClassroomStudent extends StudentInviteCandidate {
   enrolledAt: string;
 }
 
+export type ClassroomInvitationStatus = "PENDING" | "ACCEPTED";
+
+export interface ClassroomInvitation {
+  id: string;
+  classroomId: string;
+  classroomTitle: string;
+  teacherDisplayName: string;
+  student: StudentInviteCandidate;
+  status: ClassroomInvitationStatus;
+  invitedAt: string;
+  updatedAt: string;
+  acceptedAt?: string;
+}
+
 export type StudentReportScope = "CLASSROOM_AGGREGATE" | "STUDENT";
 export type CompetencyTrend = "UP" | "STEADY" | "DOWN";
 export type CompetencyOverallLevel =
@@ -179,6 +193,53 @@ export interface TeacherExamAttemptSummary {
   questions?: Array<Pick<TeacherExamQuestion, "id" | "type" | "promptMarkdown" | "points" | "choices" | "explanationMarkdown">>;
 }
 
+export type TeacherExamReportStudentStatus = "NOT_STARTED" | "IN_PROGRESS" | "SUBMITTED" | "MISSED";
+
+export interface TeacherExamReportScore {
+  score: number;
+  maxScore: number;
+  scoreRatio: number;
+}
+
+export interface TeacherExamReportQuestionDistribution {
+  key: string;
+  label: string;
+  count: number;
+  ratio: number;
+  isCorrect?: boolean;
+}
+
+export interface TeacherExamReportQuestionRespondent {
+  studentUserId: string;
+  displayName: string;
+  answerLabel: string;
+  result: "CORRECT" | "WRONG" | "PARTIAL" | "UNANSWERED" | "UNSUPPORTED";
+  score: number;
+  maxScore: number;
+  submittedAt?: string;
+}
+
+export interface TeacherExamReportQuestionStat {
+  statId?: string;
+  questionId: string;
+  questionNumber?: number;
+  type?: TeacherExamQuestionType;
+  promptMarkdown?: string;
+  maxScore: number;
+  averageScore: number;
+  attempts: number;
+  correctCount?: number;
+  incorrectCount?: number;
+  partialCount?: number;
+  unansweredCount?: number;
+  correctAnswerLabel?: string;
+  unsupportedReason?: string;
+  isArchivedQuestion?: boolean;
+  versionLabel?: string;
+  distribution?: TeacherExamReportQuestionDistribution[];
+  respondents?: TeacherExamReportQuestionRespondent[];
+}
+
 export interface StudentExamMetadata {
   id: string;
   classroomId: string;
@@ -218,6 +279,43 @@ export interface ExamStudioProposal {
   source?: "AI" | "AI_UNAVAILABLE";
 }
 
+export interface ReportCriteriaAssistantCriterion {
+  name: string;
+  description: string;
+}
+
+export interface ReportCriteriaAssistantSummaryCard {
+  title: string;
+  body: string;
+}
+
+export type ReportCriteriaAssistantMethod =
+  | "messageOnly"
+  | "draftCriterion"
+  | "reviseCriterion"
+  | "createCriterion"
+  | "updateCriterion"
+  | "deleteCriterion";
+
+export interface ReportCriteriaAssistantProposal {
+  replyMarkdown: string;
+  operation: {
+    method: ReportCriteriaAssistantMethod;
+    params?: {
+      criterion?: ReportCriteriaAssistantCriterion;
+      targetCriterionId?: string;
+      targetCriterionName?: string;
+      targetCriterionDescription?: string;
+      targetCriterionUpdatedAt?: string;
+      rationale?: string;
+      summaryCards?: ReportCriteriaAssistantSummaryCard[];
+    };
+  };
+  source?: "AI" | "AI_UNAVAILABLE";
+  fallback?: boolean;
+  downgradeReason?: string;
+}
+
 export type ExamStudioOperation =
   | {
       method: "patchExamSettings";
@@ -248,6 +346,7 @@ export interface TeacherExamReport {
   summary: {
     enrolledCount: number;
     attemptCount: number;
+    submittedCount?: number;
     gradedCount: number;
     averageScore: number;
     maxScore: number;
@@ -256,15 +355,11 @@ export interface TeacherExamReport {
   students: Array<{
     studentUserId: string;
     displayName: string;
-    status: TeacherExamAttemptStatus | "NOT_STARTED";
+    status: TeacherExamReportStudentStatus | TeacherExamAttemptStatus | "NOT_STARTED";
+    reportScore?: TeacherExamReportScore;
     attempt: TeacherExamAttemptSummary | null;
   }>;
-  questionStats: Array<{
-    questionId: string;
-    maxScore: number;
-    averageScore: number;
-    attempts: number;
-  }>;
+  questionStats: TeacherExamReportQuestionStat[];
 }
 
 export interface QuizRecord {
@@ -289,6 +384,7 @@ export interface SessionState {
   sessionId: string;
   lectureId: string;
   currentPage: number;
+  learningProgressPage?: number;
   pageStates?: Array<{
     page: number;
     status: string;
@@ -367,6 +463,8 @@ export interface StudentReportSourceStats {
   quizCount: number;
   gradedQuizCount: number;
   averageQuizScore: number;
+  teacherExamResultCount?: number;
+  teacherExamAverageScore?: number;
   feedbackCount: number;
   memoryRefreshCount: number;
 }
@@ -422,6 +520,126 @@ export interface LectureItem {
       mimeType: string;
     };
   };
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type ClassroomAttendanceStatus =
+  | "active"
+  | "completed"
+  | "notStarted"
+  | "needsAttention"
+  | "noMaterials";
+
+export interface ClassroomAttendanceLectureProgress {
+  lectureId: string;
+  lectureTitle: string;
+  weekId: string;
+  weekTitle: string;
+  weekIndex: number;
+  totalPages: number;
+  maxReachedPage: number;
+  completed: boolean;
+  lastTouchedAt?: string;
+}
+
+export interface ClassroomAttendanceStudent {
+  studentUserId: string;
+  displayName: string;
+  inviteCode: string;
+  maskedEmail: string;
+  enrolledAt: string;
+  status: ClassroomAttendanceStatus;
+  completedLectureCount: number;
+  totalLectureCount: number;
+  totalReachedPages: number;
+  totalPages: number;
+  completionRatio: number;
+  pageCoverageRatio: number;
+  currentWeekTitle?: string;
+  lastTouchedAt?: string;
+  lectures: ClassroomAttendanceLectureProgress[];
+}
+
+export interface ClassroomAttendanceSummary {
+  totalStudents: number;
+  activeStudentCount: number;
+  attentionStudentCount: number;
+  totalLectureCount: number;
+  totalPages: number;
+  weeks: Week[];
+  students: ClassroomAttendanceStudent[];
+}
+
+export type StudentClassroomAttendanceExamParticipationStatus =
+  | "graded"
+  | "submitted"
+  | "inProgress"
+  | "missed"
+  | "upcoming"
+  | "open";
+
+export type StudentClassroomAttendanceExamStatusTone =
+  | "complete"
+  | "progress"
+  | "missed"
+  | "upcoming"
+  | "none";
+
+export type StudentClassroomAttendanceExamAction =
+  | { kind: "result"; label: "결과 보기"; to: string }
+  | { kind: "take"; label: "시험 응시"; to: string }
+  | { kind: "disabled"; label: "채점 중" | "결과 준비 중" | "시험 예정" | "시험 종료" };
+
+export interface StudentClassroomAttendanceExam {
+  examId: string;
+  weekId: string;
+  title: string;
+  availableFrom?: string;
+  availableUntil?: string;
+  timeLimitMinutes?: number;
+  totalPoints: number;
+  questionCount: number;
+  participationStatus: StudentClassroomAttendanceExamParticipationStatus;
+  statusLabel: string;
+  statusTone: Exclude<StudentClassroomAttendanceExamStatusTone, "none">;
+  action: StudentClassroomAttendanceExamAction;
+  attempt?: {
+    status: TeacherExamAttemptStatus;
+    startedAt?: string;
+    submittedAt?: string;
+    gradedAt?: string;
+    hasGrading: boolean;
+  };
+}
+
+export interface StudentClassroomAttendanceWeek {
+  weekId: string;
+  weekTitle: string;
+  weekIndex: number;
+  lectureCount: number;
+  completedLectureCount: number;
+  lectureAttendanceRatio: number;
+  lectures: ClassroomAttendanceLectureProgress[];
+  examCount: number;
+  completedExamCount: number;
+  inProgressExamCount: number;
+  missedExamCount: number;
+  examStatusLabel: string;
+  examStatusTone: StudentClassroomAttendanceExamStatusTone;
+  exams: StudentClassroomAttendanceExam[];
+}
+
+export interface StudentClassroomAttendanceSummary {
+  classroomId: string;
+  studentUserId: string;
+  totalWeeks: number;
+  totalLectureCount: number;
+  completedLectureCount: number;
+  overallAttendanceRatio: number;
+  totalExamCount: number;
+  completedExamCount: number;
+  weeks: StudentClassroomAttendanceWeek[];
 }
 
 export interface Week {
@@ -431,8 +649,173 @@ export interface Week {
   title: string;
 }
 
+export interface ClassroomMaterialItem {
+  lecture: LectureItem;
+  week: Week;
+}
+
 export interface Classroom {
   id: string;
   title: string;
   teacherId?: string;
+}
+
+export type ClassroomNoticeCategory =
+  | "GENERAL"
+  | "EXAM"
+  | "MATERIAL"
+  | "DISCUSSION"
+  | "ASSIGNMENT";
+export type ClassroomNoticePriority = "NORMAL" | "IMPORTANT";
+export type ClassroomNoticeStatus = "DRAFT" | "PUBLISHED";
+export type ClassroomNoticeTarget = "CLASS";
+
+export interface ClassroomNoticeAttachment {
+  id: string;
+  name: string;
+  size: number;
+  mimeType?: string;
+}
+
+export interface ClassroomNotice {
+  id: string;
+  classroomId: string;
+  authorUserId: string;
+  authorDisplayName: string;
+  authorRole: UserRole;
+  title: string;
+  contentMarkdown: string;
+  category: ClassroomNoticeCategory;
+  priority: ClassroomNoticePriority;
+  target: ClassroomNoticeTarget;
+  pinned: boolean;
+  status: ClassroomNoticeStatus;
+  publishAt?: string;
+  publishedAt?: string;
+  attachments: ClassroomNoticeAttachment[];
+  commentCount: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ClassroomNoticeComment {
+  id: string;
+  classroomId: string;
+  noticeId: string;
+  authorUserId: string;
+  authorDisplayName: string;
+  authorRole: UserRole;
+  parentCommentId?: string;
+  contentMarkdown: string;
+  createdAt: string;
+  updatedAt: string;
+  canEdit: boolean;
+  canDelete: boolean;
+}
+
+export type ClassroomNoticeCommentPayload = {
+  contentMarkdown: string;
+  parentCommentId?: string;
+};
+
+export type ClassroomNoticeCommentPatchPayload = {
+  contentMarkdown: string;
+};
+
+export type ClassroomDiscussionCategory = "NOTICE" | "QUESTION" | "FREE" | "RESOURCE";
+export type ClassroomDiscussionStatus = "DRAFT" | "PUBLISHED";
+export type ClassroomDiscussionVisibility = "CLASS";
+
+export interface ClassroomDiscussionAttachment {
+  id: string;
+  name: string;
+  size: number;
+  mimeType?: string;
+}
+
+export interface ClassroomDiscussionPayload {
+  title: string;
+  contentMarkdown: string;
+  category: ClassroomDiscussionCategory;
+  visibility: ClassroomDiscussionVisibility;
+  pinned: boolean;
+  anonymous: boolean;
+  allowComments: boolean;
+  status: ClassroomDiscussionStatus;
+  attachments: ClassroomDiscussionAttachment[];
+}
+
+export type ClassroomDiscussionPatchPayload = Partial<ClassroomDiscussionPayload>;
+
+export interface ClassroomDiscussionPost {
+  id: string;
+  classroomId: string;
+  authorUserId: string;
+  authorDisplayName: string;
+  authorRole: UserRole;
+  title: string;
+  contentMarkdown: string;
+  category: ClassroomDiscussionCategory;
+  visibility: ClassroomDiscussionVisibility;
+  pinned: boolean;
+  anonymous: boolean;
+  allowComments: boolean;
+  status: ClassroomDiscussionStatus;
+  attachments: ClassroomDiscussionAttachment[];
+  viewCount: number;
+  commentCount: number;
+  canEdit: boolean;
+  canDelete: boolean;
+  canPin: boolean;
+  publishedAt?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ClassroomDiscussionComment {
+  id: string;
+  classroomId: string;
+  postId: string;
+  authorUserId: string;
+  authorDisplayName: string;
+  authorRole: UserRole;
+  parentCommentId?: string;
+  contentMarkdown: string;
+  canEdit: boolean;
+  canDelete: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type ClassroomDiscussionCommentPayload = {
+  contentMarkdown: string;
+  parentCommentId?: string;
+};
+
+export type ClassroomDiscussionCommentPatchPayload = {
+  contentMarkdown: string;
+};
+
+export interface DiscussionAssistantDraft {
+  title: string;
+  contentMarkdown: string;
+  category: ClassroomDiscussionCategory;
+  visibility: ClassroomDiscussionVisibility;
+  pinned: boolean;
+  anonymous: boolean;
+  allowComments: boolean;
+  status: ClassroomDiscussionStatus;
+  attachments: ClassroomDiscussionAttachment[];
+}
+
+export interface DiscussionAssistantRequest {
+  prompt: string;
+  draft: DiscussionAssistantDraft;
+}
+
+export interface DiscussionAssistantResponse {
+  messageMarkdown: string;
+  suggestedTitle?: string;
+  suggestedContentMarkdown?: string;
+  suggestionLabel?: string;
 }

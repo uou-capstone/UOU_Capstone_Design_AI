@@ -3,6 +3,7 @@ import { Request, Response, Router } from "express";
 import { ServerDeps } from "../bootstrap.js";
 import { EventApiRequest, SessionState } from "../types/domain.js";
 import { EventStreamChunk } from "../services/engine/OrchestrationEngine.js";
+import { resolveLearningProgressPage } from "../services/learningProgress.js";
 import {
   requireAuth,
   requireLectureReadable,
@@ -140,10 +141,17 @@ export function sessionRouter(deps: ServerDeps): Router {
         lectureId,
         req.authUser!.id
       );
+      const responseSession = {
+        ...session,
+        learningProgressPage: resolveLearningProgressPage(
+          session,
+          resolvedLecture.pdf.numPages
+        )
+      };
       res.json({
         ok: true,
         data: {
-          session,
+          session: responseSession,
           lecture: resolvedLecture,
           pdfUrl: `/api/uploads/${path.basename(resolvedLecture.pdf.path)}`,
           aiStatus: { connected: true }

@@ -130,6 +130,23 @@ class ExamStudioChatRequest(BaseModel):
     responseJsonSchema: dict[str, Any] | None = None
 
 
+class ReportCriteriaAssistantRequest(BaseModel):
+    model: str
+    message: str
+    history: list[dict[str, Any]] = Field(default_factory=list)
+    currentProposal: dict[str, Any] | None = None
+    builtInCriteria: list[dict[str, Any]] = Field(default_factory=list)
+    customCriteria: list[dict[str, Any]] = Field(default_factory=list)
+    responseJsonSchema: dict[str, Any] | None = None
+
+
+class DiscussionAssistantRequest(BaseModel):
+    model: str
+    prompt: str
+    draft: dict[str, Any]
+    history: list[dict[str, Any]] = Field(default_factory=list)
+
+
 class GradeTeacherExamRequest(BaseModel):
     model: str
     exam: dict[str, Any]
@@ -271,6 +288,13 @@ def _exam_studio_generation_config(response_json_schema: dict[str, Any] | None) 
     if response_json_schema:
         kwargs["response_json_schema"] = response_json_schema
     return types.GenerateContentConfig(**kwargs)
+
+
+def _markdown_thinking_generation_config() -> types.GenerateContentConfig:
+    return types.GenerateContentConfig(
+        thinking_config=types.ThinkingConfig(include_thoughts=True),
+        http_options=types.HttpOptions(timeout=30000),
+    )
 
 
 def _cache_key(file_ref: FileRef, model: str) -> tuple[str, str]:
@@ -438,6 +462,60 @@ def _iter_prompt_stream_events(
                     yield _ndjson_line({"type": "answer_delta", "text": text})
     except Exception as exc:  # noqa: BLE001
         yield _ndjson_line({"type": "error", "error": f"Gemini streaming failed: {exc}"})
+        return
+
+    answer_text = "".join(answer_chunks).strip()
+    thought_text = "".join(thought_chunks).strip()
+    safe_content = {
+        "role": "model",
+        "parts": ([{"text": thought_text, "thought": True}] if thought_text else [])
+        + ([{"text": answer_text}] if answer_text else []),
+    }
+
+    yield _ndjson_line(
+        {
+            "type": "done",
+            "content": safe_content,
+            "answerText": answer_text,
+            "thoughtSummary": thought_text,
+        }
+    )
+
+
+def _iter_markdown_prompt_stream_events(
+    *,
+    client: genai.Client,
+    model: str,
+    prompt: str,
+) -> Iterator[bytes]:
+    thought_chunks: list[str] = []
+    answer_chunks: list[str] = []
+
+    try:
+        stream = client.models.generate_content_stream(
+            model=model,
+            contents=[prompt],
+            config=_markdown_thinking_generation_config(),
+        )
+
+        for chunk in stream:
+            content = _response_content_dict(chunk)
+            if not content:
+                continue
+            for part in content.get("parts", []):
+                if not isinstance(part, dict):
+                    continue
+                text = part.get("text")
+                if not isinstance(text, str) or not text:
+                    continue
+                if bool(part.get("thought", False)):
+                    thought_chunks.append(text)
+                    yield _ndjson_line({"type": "thought_delta", "text": text})
+                else:
+                    answer_chunks.append(text)
+                    yield _ndjson_line({"type": "answer_delta", "text": text})
+    except Exception as exc:  # noqa: BLE001
+        yield _ndjson_line({"type": "error", "error": f"Gemini markdown streaming failed: {exc}"})
         return
 
     answer_text = "".join(answer_chunks).strip()
@@ -760,7 +838,8 @@ def _build_exam_studio_prompt(request: ExamStudioChatRequest) -> str:
 }}
 
 규칙:
-- operations는 브라우저의 저장 전 draft에 즉시 반영된다. 단, 실제 서버 저장/게시 여부는 교사가 별도 버튼으로 결정한다.
+- operations는 브라우저에서 교사에게 먼저 검토 제안으로 표시된다. 실제 draft 반영, 서버 저장, 게시 여부는 교사가 별도 버튼으로 결정한다.
+- operations가 있는 경우 answerMarkdown에서 이미 반영/변경/적용했다고 말하지 말고, 검토할 제안을 준비했다고 말하라.
 - 교사가 시작/종료/제한 시간/제목/설명/문항을 요청하면 반드시 operations에 적절한 method와 params를 넣어라.
 - 답변만 필요하고 수정할 사항이 없으면 operations를 빈 배열 []로 둔다.
 - 설정 변경은 patchExamSettings에 넣고, 문항 추가는 appendQuestions에 넣고, 기존 문항 수정은 replaceQuestion에 넣어라.
@@ -771,7 +850,7 @@ def _build_exam_studio_prompt(request: ExamStudioChatRequest) -> str:
 - 문제 유형은 MCQ, OX, SHORT, ESSAY 중 하나만 사용한다.
 - MCQ는 choices와 answer.choiceId를 포함한다.
 - OX는 answer.value를 포함한다.
-- SHORT는 referenceAnswer.text 또는 rubricMarkdown을 포함한다.
+- SHORT는 modelAnswerMarkdown 또는 rubricMarkdown을 포함한다. legacy 호환이 필요할 때만 referenceAnswer.text를 사용한다.
 - ESSAY는 rubricMarkdown을 반드시 포함한다.
 - points는 0.5~100 사이로 둔다.
 - 상대 날짜/시간 표현은 현재 시간과 time zone을 기준으로 직접 판단하라.
@@ -795,6 +874,89 @@ def _build_exam_studio_prompt(request: ExamStudioChatRequest) -> str:
 
 교사 메시지:
 {request.message}
+""".strip()
+
+
+def _build_report_criteria_assistant_prompt(request: ReportCriteriaAssistantRequest) -> str:
+    return f"""
+너는 EduPilot 강의실 학생별 역량 리포트의 '추가 평가 항목'을 돕는 교사용 AI 에이전트다.
+반드시 JSON만 출력하라. JSON 외 텍스트, 코드블록, 설명 문장을 절대 출력하지 마라.
+
+출력 스키마:
+{{
+  "replyMarkdown": "교사에게 보여줄 짧은 한국어 markdown 답변",
+  "operation": {{
+    "method": "messageOnly|draftCriterion|reviseCriterion|createCriterion|updateCriterion|deleteCriterion",
+    "params": {{
+      "targetCriterionId": "수정/삭제할 현재 추가 평가 항목 id",
+      "targetCriterionName": "수정/삭제할 현재 추가 평가 항목 이름",
+      "targetCriterionDescription": "수정/삭제할 현재 추가 평가 항목 설명",
+      "targetCriterionUpdatedAt": "수정/삭제할 현재 추가 평가 항목 updatedAt",
+      "criterion": {{
+        "name": "60자 이하 평가 항목 이름",
+        "description": "600자 이하 세부 설명"
+      }},
+      "rationale": "선택",
+      "summaryCards": [
+        {{"title": "요약 제목", "body": "요약 내용"}}
+      ]
+    }}
+  }},
+  "source": "AI"
+}}
+
+규칙:
+- 교사는 학생 개인 리포트 분석에 넣을 개인화 평가 기준을 찾고 있다.
+- 기본 항목과 추가 항목에 이미 있는 이름은 피하고, 기존 항목이 보지 못하는 학생 행동/근거를 제안하라.
+- draftCriterion은 새 초안, reviseCriterion은 현재 초안 수정, createCriterion은 교사가 명시적으로 반영/추가/저장하라고 말한 경우에만 사용한다.
+- createCriterion이어도 criterion.name과 criterion.description을 반드시 포함하라.
+- updateCriterion은 현재 추가 평가 항목 하나를 수정하는 제안이다. 반드시 현재 추가 평가 항목의 id/name/description/updatedAt을 targetCriterionId/targetCriterionName/targetCriterionDescription/targetCriterionUpdatedAt에 넣고, 수정 후 전체 항목을 criterion에 넣어라.
+- deleteCriterion은 현재 추가 평가 항목 하나를 삭제하는 제안이다. 반드시 현재 추가 평가 항목의 id/name/description/updatedAt을 targetCriterionId/targetCriterionName/targetCriterionDescription/targetCriterionUpdatedAt에 넣어라. criterion은 넣지 않아도 된다.
+- 기본 평가 항목은 수정하거나 삭제할 수 없다. 교사가 기본 평가 항목 삭제/수정을 요청하면 messageOnly로 이유를 안내하라.
+- 수정/삭제 대상이 모호하거나 현재 추가 평가 항목 id를 확신할 수 없으면 messageOnly로 어떤 항목인지 다시 물어봐라.
+- 교사가 아이디어만 묻거나 상담을 원하면 messageOnly 또는 draftCriterion을 사용한다.
+- summaryCards는 최대 3개로, '중복 항목 확인', '의도 파악', '평가 설명 생성'처럼 진행 내용을 UI 카드로 보여주기 좋은 문장으로 만든다.
+- replyMarkdown에서 실제로 반영/수정/삭제했다고 말하지 마라. 실제 저장은 사용자가 별도 버튼을 누르거나 시스템 apply 단계에서 수행한다.
+- updateCriterion/deleteCriterion은 확인 카드에서 교사가 버튼을 눌러야 실제 적용된다.
+
+기본 평가 항목:
+{json.dumps(request.builtInCriteria, ensure_ascii=False)}
+
+현재 추가 평가 항목:
+{json.dumps(request.customCriteria, ensure_ascii=False)}
+
+현재 채팅 내 제안:
+{json.dumps(request.currentProposal, ensure_ascii=False)}
+
+최근 대화:
+{json.dumps(request.history[-8:], ensure_ascii=False)}
+
+교사 메시지:
+{request.message}
+""".strip()
+
+
+def _build_discussion_assistant_prompt(request: DiscussionAssistantRequest) -> str:
+    return f"""
+너는 EduPilot 강의실의 토론 게시글 작성 어시스턴트다.
+사용자는 현재 왼쪽 편집기에서 토론 게시글을 작성하고 있으며, 아래 게시글 초안 JSON과 요청을 함께 보낸다.
+
+규칙:
+- 답변은 한국어 Markdown으로 작성하라.
+- 에이전트가 아니므로 도구 호출, 저장, 게시, 권한 변경을 했다고 말하지 마라.
+- 초안 JSON에 없는 권한이나 사용자 정보를 추측하지 마라.
+- 학생이 바로 이해하고 사용할 수 있도록 간결하지만 구체적으로 답하라.
+- 사용자가 문장 개선, 질문화, 요약, 공지/토론 톤 변경을 요청하면 바로 쓸 수 있는 예시 문장을 제공하라.
+- 필요하면 제목/본문 제안은 Markdown 목록으로 제시하되, 실제 반영은 사용자가 직접 결정한다고 안내하라.
+
+현재 게시글 초안 JSON:
+{json.dumps(request.draft, ensure_ascii=False, indent=2)}
+
+최근 대화:
+{json.dumps(request.history[-8:], ensure_ascii=False, indent=2)}
+
+사용자 요청:
+{request.prompt}
 """.strip()
 
 
@@ -867,13 +1029,72 @@ def exam_studio_chat_stream(request: ExamStudioChatRequest) -> StreamingResponse
     return StreamingResponse(generator(), media_type="application/x-ndjson")
 
 
+@app.post("/bridge/report_criteria_assistant_chat_stream")
+def report_criteria_assistant_chat_stream(
+    request: ReportCriteriaAssistantRequest,
+) -> StreamingResponse:
+    client = _get_client()
+    prompt = _build_report_criteria_assistant_prompt(request)
+
+    def generator() -> Iterator[bytes]:
+        yield _ndjson_line({"type": "thought_delta", "text": "평가 항목 도우미 JSON 응답을 생성하고 있습니다."})
+        try:
+            response = client.models.generate_content(
+                model=request.model,
+                contents=[prompt],
+                config=_exam_studio_generation_config(request.responseJsonSchema),
+            )
+        except Exception as exc:  # noqa: BLE001
+            yield _ndjson_line({"type": "error", "error": f"Gemini report criteria assistant failed: {exc}"})
+            return
+
+        content = _response_content_dict(response)
+        answer_text = _content_text(content)
+        try:
+            parsed = _extract_json(answer_text)
+        except Exception as exc:  # noqa: BLE001
+            yield _ndjson_line({"type": "error", "error": f"Failed to parse report criteria assistant JSON: {exc}"})
+            return
+        yield _ndjson_line(
+            {
+                "type": "done",
+                "content": {
+                    "role": "model",
+                    "parts": [{"text": answer_text}],
+                },
+                "answerText": answer_text,
+                "thoughtSummary": "",
+                "data": parsed,
+            }
+        )
+
+    return StreamingResponse(generator(), media_type="application/x-ndjson")
+
+
+@app.post("/bridge/discussion_assistant_chat_stream")
+def discussion_assistant_chat_stream(request: DiscussionAssistantRequest) -> StreamingResponse:
+    client = _get_client()
+    prompt = _build_discussion_assistant_prompt(request)
+    return StreamingResponse(
+        _iter_markdown_prompt_stream_events(
+            client=client,
+            model=request.model,
+            prompt=prompt,
+        ),
+        media_type="application/x-ndjson",
+    )
+
+
 @app.post("/bridge/grade_teacher_exam")
 def grade_teacher_exam(request: GradeTeacherExamRequest) -> dict[str, Any]:
     client = _get_client()
     prompt = f"""
-다음 교사용 시험과 학생 답안을 채점하고 JSON만 출력하라.
+다음 교사용 시험의 단답식/서술형 문항과 학생 답안을 채점하고 JSON만 출력하라.
 점수는 각 문항 points 범위 안에서 엄격하게 매긴다.
-서술형은 rubricMarkdown과 modelAnswerMarkdown을 우선 기준으로 삼는다.
+입력에는 AI 채점이 필요한 문항만 포함된다. 포함된 모든 문항을 채점하라.
+rubricMarkdown과 modelAnswerMarkdown을 우선 기준으로 삼는다.
+단답식의 referenceAnswer는 modelAnswerMarkdown이 없을 때만 legacy fallback으로 참고한다.
+feedbackMarkdown에는 학생 응답이 어떤 채점 기준을 충족/미충족했는지 짧게 적는다.
 스키마:
 {{
   "totalScore": number,

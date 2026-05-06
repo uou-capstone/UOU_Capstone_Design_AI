@@ -4,6 +4,7 @@ import { RequireRole } from "./auth/RequireRole";
 import { ClassroomRoute } from "./routes/Classroom";
 import { ClassroomReportRoute } from "./routes/ClassroomReport";
 import { ExamReportRoute } from "./routes/ExamReport";
+import { ExamStudioRoute } from "./routes/ExamStudio";
 import { ExamTakingRoute } from "./routes/ExamTaking";
 import { AccountSettingsRoute } from "./routes/AccountSettings";
 import { DashboardRoute } from "./routes/Dashboard";
@@ -22,6 +23,22 @@ export function App() {
         <Route path="/" element={<DashboardRoute />} />
         <Route path="/account" element={<AccountSettingsRoute />} />
         <Route path="/classrooms/:classroomId" element={<ClassroomRoute />} />
+        <Route
+          path="/classrooms/:classroomId/weeks/:weekId/exam-studio"
+          element={
+            <RequireRole allow={["teacher"]}>
+              <ExamStudioRoute />
+            </RequireRole>
+          }
+        />
+        <Route
+          path="/classrooms/:classroomId/weeks/:weekId/exam-studio/:examId"
+          element={
+            <RequireRole allow={["teacher"]}>
+              <ExamStudioRoute />
+            </RequireRole>
+          }
+        />
         <Route
           path="/classrooms/:classroomId/report"
           element={

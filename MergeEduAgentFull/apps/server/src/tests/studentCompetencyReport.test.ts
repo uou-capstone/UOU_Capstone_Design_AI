@@ -1,9 +1,35 @@
-import { describe, expect, it, vi } from "vitest";
+import fs from "node:fs/promises";
+import path from "node:path";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { createInitialIntegratedMemory } from "../services/engine/LearnerMemoryService.js";
+import { ExamClock } from "../services/exams/ExamClock.js";
+import { ConsoleExamLogger } from "../services/exams/ExamLogger.js";
+import { TeacherExamGradingService } from "../services/exams/TeacherExamGradingService.js";
+import { TeacherExamService } from "../services/exams/TeacherExamService.js";
 import { StudentCompetencyReportService } from "../services/report/StudentCompetencyReportService.js";
 import { GeminiBridgeClient } from "../services/llm/GeminiBridgeClient.js";
 import { JsonStore } from "../services/storage/JsonStore.js";
-import { SessionState, StudentCompetencyReport } from "../types/domain.js";
+import { SessionState, StudentCompetencyReport, TeacherExamResultRecord } from "../types/domain.js";
+
+const integrationDataDir = path.resolve(process.cwd(), "apps/server/data-student-report-integration-test");
+const integrationUploadDir = path.resolve(process.cwd(), "apps/server/uploads-student-report-integration-test");
+
+class FixedExamClock implements ExamClock {
+  constructor(private currentIso: string) {}
+
+  set(value: string) {
+    this.currentIso = value;
+  }
+
+  now(): Date {
+    return new Date(this.currentIso);
+  }
+}
+
+afterEach(async () => {
+  await fs.rm(integrationDataDir, { recursive: true, force: true });
+  await fs.rm(integrationUploadDir, { recursive: true, force: true });
+});
 
 const competencyKeys = [
   "CONCEPT_UNDERSTANDING",
@@ -135,6 +161,76 @@ function makeReportCriterion(id = "crit_logic") {
     description: "학생 답변에서 주장과 근거가 자연스럽게 연결되는지 평가",
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString()
+  };
+}
+
+function makeTeacherExamResultRecord(input: {
+  id?: string;
+  studentUserId?: string;
+  examTitle?: string;
+  answerText?: string;
+  feedbackMarkdown?: string;
+  score?: number;
+  maxScore?: number;
+} = {}): TeacherExamResultRecord {
+  const now = "2026-05-05T01:00:00.000Z";
+  const studentUserId = input.studentUserId ?? "stu_good";
+  const score = input.score ?? 4;
+  const maxScore = input.maxScore ?? 5;
+  return {
+    id: input.id ?? `ter_${studentUserId}`,
+    schemaVersion: "1.0",
+    examId: "tex_midterm",
+    classroomId: "cls_1",
+    weekId: "wk_1",
+    attemptId: `attempt_${studentUserId}`,
+    submissionId: `submission_${studentUserId}`,
+    studentUserId,
+    examVersion: 2,
+    generatedAt: now,
+    examTitle: input.examTitle ?? "중간고사",
+    settingsSnapshot: {
+      title: input.examTitle ?? "중간고사",
+      descriptionMarkdown: "서술형 AI 채점 포함",
+      availableFrom: "2026-05-05T00:00:00.000Z",
+      availableUntil: "2026-05-06T00:00:00.000Z",
+      timeLimitMinutes: 40,
+      passScoreRatio: 0.6,
+      aiGradingEnabled: true
+    },
+    answers: {
+      q_essay: input.answerText ?? "고구려, 백제, 신라 순서로 삼국 통일 과정을 설명했습니다."
+    },
+    grading: {
+      totalScore: score,
+      maxScore,
+      scoreRatio: maxScore > 0 ? score / maxScore : 0,
+      gradingSource: "AI",
+      summaryMarkdown: "AI가 채점 기준에 따라 서술형 답안을 채점했습니다.",
+      items: [
+        {
+          questionId: "q_essay",
+          score,
+          maxScore,
+          verdict: score >= maxScore ? "CORRECT" : "PARTIAL",
+          feedbackMarkdown:
+            input.feedbackMarkdown ?? "백제 전성기를 정확히 설명했지만 통일 과정의 인과 설명은 보강이 필요합니다.",
+          gradingMode: "AI"
+        }
+      ]
+    },
+    questions: [
+      {
+        id: "q_essay",
+        type: "ESSAY",
+        promptMarkdown: "삼국 시대의 통일 과정을 순서대로 서술하세요.",
+        points: maxScore,
+        rubricMarkdown: "순서, 핵심 국가, 인과 관계를 평가합니다.",
+        modelAnswerMarkdown: "고구려의 성장, 백제의 전성기, 신라의 통일 과정을 순서대로 설명합니다."
+      }
+    ],
+    submittedAt: now,
+    gradedAt: now
   };
 }
 
@@ -1523,6 +1619,267 @@ describe("StudentCompetencyReportService", () => {
     expect(prompt).not.toContain("부진학생 고유 약점");
   });
 
+  it("includes selected student's teacher exam result JSON in report analysis evidence", async () => {
+    const bridge = {
+      analyzeStudentCompetencyReport: vi.fn(async () => ({
+        report: makeReportPayload({ studentLabel: "우등생", overallScore: 84 })
+      }))
+    } as unknown as GeminiBridgeClient;
+    const goodExamResult = makeTeacherExamResultRecord({
+      studentUserId: "stu_good",
+      feedbackMarkdown: "백제 전성기를 정확히 설명했지만 통일 과정의 인과 설명은 보강이 필요합니다."
+    });
+    const poorExamResult = makeTeacherExamResultRecord({
+      id: "ter_stu_poor",
+      studentUserId: "stu_poor",
+      answerText: "부진학생 유출 답안입니다.",
+      feedbackMarkdown: "부진학생 유출 피드백입니다."
+    });
+    const listTeacherExamResultRecordsForStudent = vi.fn(
+      async (_classroomId: string, studentUserId: string) =>
+        studentUserId === "stu_good" ? [goodExamResult] : [poorExamResult]
+    );
+    const listTeacherExamResultRecordsByClassroom = vi.fn(async () => [
+      goodExamResult,
+      poorExamResult
+    ]);
+    const store = {
+      listClassrooms: async () => [
+        {
+          id: "cls_1",
+          title: "테스트 강의실",
+          teacherId: "teacher_1",
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString()
+        }
+      ],
+      listWeeksByClassroom: async () => [
+        {
+          id: "wk_1",
+          classroomId: "cls_1",
+          weekIndex: 1,
+          title: "1주차",
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString()
+        }
+      ],
+      listLecturesByWeekIds: async () => new Map([["wk_1", []]]),
+      listClassroomReportCriteria: async () => [],
+      isStudentEnrolled: async (_classroomId: string, studentUserId: string) =>
+        studentUserId === "stu_good",
+      getUser: async () => ({
+        id: "stu_good",
+        email: "good@example.com",
+        emailNormalized: "good@example.com",
+        displayName: "우등생",
+        role: "student",
+        inviteCode: "1111",
+        emailVerifiedAt: new Date().toISOString(),
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      }),
+      listTeacherExamResultRecordsForStudent,
+      listTeacherExamResultRecordsByClassroom
+    } as unknown as JsonStore;
+
+    const service = new StudentCompetencyReportService(store, bridge);
+    const report = await service.buildStudentReport("cls_1", "stu_good");
+    const analysisInput = vi.mocked(bridge.analyzeStudentCompetencyReport).mock.calls[0]?.[0];
+    const prompt = analysisInput?.prompt;
+    const schema = analysisInput?.responseJsonSchema as any;
+
+    expect(report?.sourceStats.teacherExamResultCount).toBe(1);
+    expect(report?.sourceStats.teacherExamAverageScore).toBe(80);
+    expect(report?.sourceStats.gradedQuizCount).toBe(0);
+    expect(report?.sourceStats.averageQuizScore).toBe(0);
+    expect(report?.analysisStatus).toBe("READY");
+    expect(bridge.analyzeStudentCompetencyReport).toHaveBeenCalledTimes(1);
+    expect(listTeacherExamResultRecordsForStudent).toHaveBeenCalledWith("cls_1", "stu_good");
+    expect(listTeacherExamResultRecordsByClassroom).not.toHaveBeenCalled();
+    expect(schema?.properties.sourceStats.properties.teacherExamAverageScore).toBeDefined();
+    expect(prompt).toContain("teacherExamResults");
+    expect(prompt).toContain("recentTeacherExamHighlights");
+    expect(prompt).toContain("중간고사");
+    expect(prompt).toContain("80점");
+    expect(prompt).toContain("삼국 시대의 통일 과정을 순서대로 서술하세요.");
+    expect(prompt).toContain("백제 전성기를 정확히 설명");
+    expect(prompt).not.toContain("부진학생 유출");
+  });
+
+  it("averages teacher exam stats only from finite score ratios", async () => {
+    const bridge = {
+      analyzeStudentCompetencyReport: vi.fn(async () => ({
+        report: makeReportPayload({ studentLabel: "우등생", overallScore: 84 })
+      }))
+    } as unknown as GeminiBridgeClient;
+    const partiallyMigrated = makeTeacherExamResultRecord({
+      studentUserId: "stu_good",
+      score: 8,
+      maxScore: 10
+    }) as TeacherExamResultRecord;
+    (partiallyMigrated.grading as any).scoreRatio = Number.NaN;
+    const store = {
+      ...(makeStudentReportStore() as unknown as Record<string, unknown>),
+      getSessionByLectureForOwner: async () => null,
+      listTeacherExamResultRecordsForStudent: async () => [partiallyMigrated]
+    } as unknown as JsonStore;
+
+    const service = new StudentCompetencyReportService(store, bridge);
+    const report = await service.buildStudentReport("cls_1", "stu_good");
+
+    expect(report?.sourceStats.teacherExamResultCount).toBe(1);
+    expect(report?.sourceStats.teacherExamAverageScore).toBe(0);
+    expect(Number.isNaN(report?.sourceStats.teacherExamAverageScore)).toBe(false);
+  });
+
+  it("builds a student report from a real teacher-created exam submission", async () => {
+    await fs.rm(integrationDataDir, { recursive: true, force: true });
+    await fs.rm(integrationUploadDir, { recursive: true, force: true });
+    const store = new JsonStore({ dataDir: integrationDataDir, uploadDir: integrationUploadDir });
+    await store.init();
+
+    const classroom = await store.createClassroom("시험 반영 강의실", "teacher_1");
+    const week = await store.createWeek(classroom.id, "1주차");
+    const student = await store.createUser({
+      email: "exam-report-student@example.com",
+      emailNormalized: "exam-report-student@example.com",
+      displayName: "시험응시 학생",
+      role: "student",
+      inviteCode: "EXAM1",
+      emailVerifiedAt: "2026-05-05T00:00:00.000Z"
+    });
+    await store.enrollStudent(classroom.id, student.id, "teacher_1");
+
+    const clock = new FixedExamClock("2026-05-05T00:10:00.000Z");
+    const examService = new TeacherExamService(
+      store,
+      new TeacherExamGradingService(),
+      clock,
+      new ConsoleExamLogger()
+    );
+    const draft = {
+      title: "중간고사",
+      descriptionMarkdown: "교사가 직접 게시한 시험",
+      availableFrom: "2026-05-05T00:00:00.000Z",
+      availableUntil: "2026-05-06T00:00:00.000Z",
+      timeLimitMinutes: 60,
+      passScoreRatio: 0.6,
+      aiGradingEnabled: false,
+      questions: [
+        {
+          id: "q_midterm",
+          type: "MCQ",
+          promptMarkdown: "2 + 2 = ?",
+          points: 10,
+          choices: [
+            { id: "a", textMarkdown: "3" },
+            { id: "b", textMarkdown: "4" }
+          ],
+          answer: { choiceId: "b" }
+        }
+      ]
+    } as const;
+    const exam = await examService.createExam(week.id, classroom.id, draft);
+    const published = await examService.publish(exam.id, draft);
+    const attempt = await examService.startAttempt(published.id, student.id);
+    if (!attempt.id) throw new Error("expected teacher exam attempt id");
+    await examService.submitAttempt(attempt.id, student.id, {
+      q_midterm: { choiceId: "b" }
+    });
+    await fs.writeFile(path.join(integrationDataDir, "teacher-exam-results.json"), "[]\n", "utf-8");
+
+    const bridge = {
+      analyzeStudentCompetencyReport: vi.fn(async () => ({
+        report: makeReportPayload({ studentLabel: "시험응시 학생", overallScore: 91 })
+      }))
+    } as unknown as GeminiBridgeClient;
+    const reportService = new StudentCompetencyReportService(store, bridge);
+    const report = await reportService.buildStudentReport(classroom.id, student.id);
+    const prompt = vi.mocked(bridge.analyzeStudentCompetencyReport).mock.calls[0]?.[0].prompt;
+
+    expect(report?.sourceStats.teacherExamResultCount).toBe(1);
+    expect(report?.sourceStats.teacherExamAverageScore).toBe(100);
+    expect(report?.sourceStats.gradedQuizCount).toBe(0);
+    expect(report?.sourceStats.averageQuizScore).toBe(0);
+    expect(prompt).toContain("teacherExamResults");
+    expect(prompt).toContain("recentTeacherExamHighlights");
+    expect(prompt).toContain("중간고사");
+    expect(prompt).toContain("2 + 2 = ?");
+    expect(prompt).toContain("100점");
+    const backfilledResults = JSON.parse(
+      await fs.readFile(path.join(integrationDataDir, "teacher-exam-results.json"), "utf-8")
+    ) as unknown[];
+    expect(backfilledResults).toHaveLength(1);
+  });
+
+  it("keeps full teacher exam stats while capping prompt evidence to recent results", async () => {
+    const bridge = {
+      analyzeStudentCompetencyReport: vi.fn(async () => ({
+        report: makeReportPayload({ studentLabel: "우등생", overallScore: 84 })
+      }))
+    } as unknown as GeminiBridgeClient;
+    const results = Array.from({ length: 13 }, (_, index) =>
+      makeTeacherExamResultRecord({
+        id: `ter_boundary_${index + 1}`,
+        studentUserId: "stu_good",
+        examTitle: `시험 ${String(index + 1).padStart(2, "0")}`,
+        score: index + 1,
+        maxScore: 13,
+        feedbackMarkdown: `시험 ${String(index + 1).padStart(2, "0")} 피드백`
+      })
+    ).map((record, index) => ({
+      ...record,
+      generatedAt: `2026-05-${String(index + 1).padStart(2, "0")}T00:00:00.000Z`,
+      gradedAt: `2026-05-${String(index + 1).padStart(2, "0")}T00:00:00.000Z`
+    }));
+    const store = {
+      ...(makeStudentReportStore() as unknown as Record<string, unknown>),
+      getSessionByLectureForOwner: async () => null,
+      listTeacherExamResultRecordsForStudent: async () => results
+    } as unknown as JsonStore;
+
+    const service = new StudentCompetencyReportService(store, bridge);
+    const report = await service.buildStudentReport("cls_1", "stu_good");
+    const prompt = vi.mocked(bridge.analyzeStudentCompetencyReport).mock.calls[0]?.[0].prompt;
+
+    expect(report?.sourceStats.teacherExamResultCount).toBe(13);
+    expect(report?.sourceStats.teacherExamAverageScore).toBe(54);
+    expect(prompt).not.toContain("시험 01 피드백");
+    expect(prompt).toContain("시험 13 피드백");
+  });
+
+  it("uses teacher exam evidence in fallback reports and guards malformed scores", async () => {
+    const bridge = {
+      analyzeStudentCompetencyReport: vi.fn(async () => {
+        throw new Error("Gemini unavailable");
+      })
+    } as unknown as GeminiBridgeClient;
+    const malformed = makeTeacherExamResultRecord({
+      studentUserId: "stu_good",
+      examTitle: "중간고사",
+      feedbackMarkdown: "구체적인 교사 시험 피드백"
+    }) as TeacherExamResultRecord;
+    (malformed.grading as any).scoreRatio = Number.NaN;
+    (malformed.grading as any).totalScore = Number.NaN;
+    (malformed.grading as any).maxScore = 0;
+    const store = {
+      ...(makeStudentReportStore() as unknown as Record<string, unknown>),
+      getSessionByLectureForOwner: async () => null,
+      listTeacherExamResultRecordsForStudent: async () => [malformed]
+    } as unknown as JsonStore;
+
+    const service = new StudentCompetencyReportService(store, bridge);
+    const report = await service.buildStudentReport("cls_1", "stu_good");
+
+    expect(report?.generationMode).toBe("HEURISTIC_FALLBACK");
+    expect(report?.sourceStats.teacherExamResultCount).toBe(1);
+    expect(report?.sourceStats.teacherExamAverageScore).toBe(0);
+    expect(Number.isNaN(report?.sourceStats.teacherExamAverageScore)).toBe(false);
+    expect(report?.summaryMarkdown).toContain("교사 배포 시험 결과 **1건**");
+    expect(report?.summaryMarkdown).toContain("중간고사 0점");
+    expect(report?.summaryMarkdown).toContain("구체적인 교사 시험 피드백");
+  });
+
   it("streams student report chat with only the selected student's saved report and source evidence", async () => {
     const savedReport: StudentCompetencyReport = {
       schemaVersion: "1.0",
@@ -1609,6 +1966,16 @@ describe("StudentCompetencyReportService", () => {
       question: "부진학생 고유질문: 다른 학생의 질문입니다.",
       scoreRatio: 0,
       weaknesses: ["부진학생 고유 약점"]
+    });
+    const goodExamResult = makeTeacherExamResultRecord({
+      studentUserId: "stu_good",
+      feedbackMarkdown: "채팅 근거용 서술형 AI 피드백입니다."
+    });
+    const poorExamResult = makeTeacherExamResultRecord({
+      id: "ter_stu_poor_chat",
+      studentUserId: "stu_poor",
+      answerText: "채팅에 섞이면 안 되는 다른 학생 시험 답안입니다.",
+      feedbackMarkdown: "채팅에 섞이면 안 되는 다른 학생 시험 피드백입니다."
     });
     const getSessionByLectureForOwner = vi.fn(async (_lectureId: string, ownerUserId: string) =>
       ownerUserId === "stu_good" ? goodSession : poorSession
@@ -1697,6 +2064,8 @@ describe("StudentCompetencyReportService", () => {
             },
       getStudentClassroomReport: async (_classroomId: string, studentUserId: string) =>
         studentUserId === "stu_good" ? savedReport : null,
+      listTeacherExamResultRecordsForStudent: async (_classroomId: string, studentUserId: string) =>
+        studentUserId === "stu_good" ? [goodExamResult] : [poorExamResult],
       getSessionByLectureForOwner
     } as unknown as JsonStore;
     const answerDeltas: string[] = [];
@@ -1723,10 +2092,12 @@ describe("StudentCompetencyReportService", () => {
     expect(getSessionByLectureForOwner).not.toHaveBeenCalledWith("lec_1", "stu_poor");
     expect(prompt).toContain("우등생 저장 리포트 헤드라인");
     expect(prompt).toContain("우등생 고유질문");
+    expect(prompt).toContain("채팅 근거용 서술형 AI 피드백입니다.");
     expect(prompt).toContain("왜 정의 설명이 약한가요?");
     expect(prompt).toContain("history는 흐름 파악용 참고 문맥일 뿐 근거 데이터가 아니다");
     expect(prompt).not.toContain("부진학생 고유질문");
     expect(prompt).not.toContain("부진학생 고유 약점");
+    expect(prompt).not.toContain("채팅에 섞이면 안 되는 다른 학생 시험");
     expect(prompt).not.toContain("다른 학생 데이터를 포함하라");
   });
 

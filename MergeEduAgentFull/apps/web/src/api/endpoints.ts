@@ -2,11 +2,33 @@ import { ApiError, api } from "./client";
 import {
   AiStatus,
   Classroom,
+  ClassroomAttendanceSummary,
+  ClassroomDiscussionComment,
+  ClassroomDiscussionCommentPatchPayload,
+  ClassroomDiscussionCommentPayload,
+  ClassroomDiscussionPatchPayload,
+  ClassroomDiscussionPayload,
+  ClassroomDiscussionPost,
+  ClassroomInvitation,
+  ClassroomMaterialItem,
+  ClassroomNotice,
+  ClassroomNoticeAttachment,
+  ClassroomNoticeCategory,
+  ClassroomNoticeComment,
+  ClassroomNoticeCommentPatchPayload,
+  ClassroomNoticeCommentPayload,
+  ClassroomNoticePriority,
+  ClassroomNoticeStatus,
+  ClassroomNoticeTarget,
   ClassroomStudent,
   CurrentUser,
+  DiscussionAssistantRequest,
+  DiscussionAssistantResponse,
   ExamStudioProposal,
   LectureItem,
+  ReportCriteriaAssistantProposal,
   SessionState,
+  StudentClassroomAttendanceSummary,
   StudentExamMetadata,
   StudentInviteCandidate,
   StudentCompetencyReport,
@@ -196,11 +218,18 @@ export async function getClassroomStudents(classroomId: string): Promise<Classro
   return res.data.data;
 }
 
+export async function getClassroomInvitations(classroomId: string): Promise<ClassroomInvitation[]> {
+  const res = await api.get<{ ok: boolean; data: ClassroomInvitation[] }>(
+    `/classrooms/${classroomId}/invitations`
+  );
+  return res.data.data;
+}
+
 export async function inviteStudent(
   classroomId: string,
   input: { studentUserId: string; name: string; code: string }
-): Promise<ClassroomStudent> {
-  const res = await api.post<{ ok: boolean; data: ClassroomStudent }>(
+): Promise<ClassroomInvitation> {
+  const res = await api.post<{ ok: boolean; data: ClassroomInvitation }>(
     `/classrooms/${classroomId}/students`,
     input
   );
@@ -212,6 +241,20 @@ export async function removeClassroomStudent(
   studentUserId: string
 ): Promise<void> {
   await api.delete(`/classrooms/${classroomId}/students/${studentUserId}`);
+}
+
+export async function getMyClassroomInvitations(): Promise<ClassroomInvitation[]> {
+  const res = await api.get<{ ok: boolean; data: ClassroomInvitation[] }>(
+    "/students/invitations"
+  );
+  return res.data.data;
+}
+
+export async function acceptClassroomInvitation(invitationId: string): Promise<ClassroomInvitation> {
+  const res = await api.post<{ ok: boolean; data: ClassroomInvitation }>(
+    `/students/invitations/${invitationId}/accept`
+  );
+  return res.data.data;
 }
 
 export async function getClassrooms(): Promise<Classroom[]> {
@@ -226,6 +269,334 @@ export async function createClassroom(title: string): Promise<Classroom> {
 
 export async function deleteClassroom(classroomId: string): Promise<void> {
   await api.delete(`/classrooms/${classroomId}`);
+}
+
+export type ClassroomNoticePayload = {
+  title: string;
+  contentMarkdown: string;
+  category: ClassroomNoticeCategory;
+  priority: ClassroomNoticePriority;
+  target: ClassroomNoticeTarget;
+  pinned: boolean;
+  status: ClassroomNoticeStatus;
+  publishAt?: string | null;
+  attachments: ClassroomNoticeAttachment[];
+};
+
+export type ClassroomNoticePatchPayload = Partial<ClassroomNoticePayload>;
+
+export async function getClassroomNotices(classroomId: string): Promise<ClassroomNotice[]> {
+  const res = await api.get<{ ok: boolean; data: ClassroomNotice[] }>(
+    `/classrooms/${classroomId}/notices`
+  );
+  return res.data.data;
+}
+
+export async function createClassroomNotice(
+  classroomId: string,
+  input: ClassroomNoticePayload
+): Promise<ClassroomNotice> {
+  const res = await api.post<{ ok: boolean; data: ClassroomNotice }>(
+    `/classrooms/${classroomId}/notices`,
+    input
+  );
+  return res.data.data;
+}
+
+export async function getClassroomNotice(
+  classroomId: string,
+  noticeId: string
+): Promise<ClassroomNotice> {
+  const res = await api.get<{ ok: boolean; data: ClassroomNotice }>(
+    `/classrooms/${classroomId}/notices/${noticeId}`
+  );
+  return res.data.data;
+}
+
+export async function updateClassroomNotice(
+  classroomId: string,
+  noticeId: string,
+  input: ClassroomNoticePatchPayload
+): Promise<ClassroomNotice> {
+  const res = await api.patch<{ ok: boolean; data: ClassroomNotice }>(
+    `/classrooms/${classroomId}/notices/${noticeId}`,
+    input
+  );
+  return res.data.data;
+}
+
+export async function deleteClassroomNotice(
+  classroomId: string,
+  noticeId: string
+): Promise<void> {
+  await api.delete(`/classrooms/${classroomId}/notices/${noticeId}`);
+}
+
+export async function getClassroomNoticeComments(
+  classroomId: string,
+  noticeId: string
+): Promise<ClassroomNoticeComment[]> {
+  const res = await api.get<{ ok: boolean; data: ClassroomNoticeComment[] }>(
+    `/classrooms/${classroomId}/notices/${noticeId}/comments`
+  );
+  return res.data.data;
+}
+
+export async function createClassroomNoticeComment(
+  classroomId: string,
+  noticeId: string,
+  input: ClassroomNoticeCommentPayload
+): Promise<ClassroomNoticeComment> {
+  const res = await api.post<{ ok: boolean; data: ClassroomNoticeComment }>(
+    `/classrooms/${classroomId}/notices/${noticeId}/comments`,
+    input
+  );
+  return res.data.data;
+}
+
+export async function updateClassroomNoticeComment(
+  classroomId: string,
+  noticeId: string,
+  commentId: string,
+  input: ClassroomNoticeCommentPatchPayload
+): Promise<ClassroomNoticeComment> {
+  const res = await api.patch<{ ok: boolean; data: ClassroomNoticeComment }>(
+    `/classrooms/${classroomId}/notices/${noticeId}/comments/${commentId}`,
+    input
+  );
+  return res.data.data;
+}
+
+export async function deleteClassroomNoticeComment(
+  classroomId: string,
+  noticeId: string,
+  commentId: string
+): Promise<void> {
+  await api.delete(`/classrooms/${classroomId}/notices/${noticeId}/comments/${commentId}`);
+}
+
+export async function getClassroomDiscussions(
+  classroomId: string
+): Promise<ClassroomDiscussionPost[]> {
+  const res = await api.get<{ ok: boolean; data: ClassroomDiscussionPost[] }>(
+    `/classrooms/${classroomId}/discussions`
+  );
+  return res.data.data;
+}
+
+export async function createClassroomDiscussion(
+  classroomId: string,
+  input: ClassroomDiscussionPayload
+): Promise<ClassroomDiscussionPost> {
+  const res = await api.post<{ ok: boolean; data: ClassroomDiscussionPost }>(
+    `/classrooms/${classroomId}/discussions`,
+    input
+  );
+  return res.data.data;
+}
+
+export async function getClassroomDiscussion(
+  classroomId: string,
+  discussionId: string
+): Promise<ClassroomDiscussionPost> {
+  const res = await api.get<{ ok: boolean; data: ClassroomDiscussionPost }>(
+    `/classrooms/${classroomId}/discussions/${discussionId}`
+  );
+  return res.data.data;
+}
+
+export async function updateClassroomDiscussion(
+  classroomId: string,
+  discussionId: string,
+  input: ClassroomDiscussionPatchPayload
+): Promise<ClassroomDiscussionPost> {
+  const res = await api.patch<{ ok: boolean; data: ClassroomDiscussionPost }>(
+    `/classrooms/${classroomId}/discussions/${discussionId}`,
+    input
+  );
+  return res.data.data;
+}
+
+export async function deleteClassroomDiscussion(
+  classroomId: string,
+  discussionId: string
+): Promise<void> {
+  await api.delete(`/classrooms/${classroomId}/discussions/${discussionId}`);
+}
+
+export async function getClassroomDiscussionComments(
+  classroomId: string,
+  discussionId: string
+): Promise<ClassroomDiscussionComment[]> {
+  const res = await api.get<{ ok: boolean; data: ClassroomDiscussionComment[] }>(
+    `/classrooms/${classroomId}/discussions/${discussionId}/comments`
+  );
+  return res.data.data;
+}
+
+export async function createClassroomDiscussionComment(
+  classroomId: string,
+  discussionId: string,
+  input: ClassroomDiscussionCommentPayload
+): Promise<ClassroomDiscussionComment> {
+  const res = await api.post<{ ok: boolean; data: ClassroomDiscussionComment }>(
+    `/classrooms/${classroomId}/discussions/${discussionId}/comments`,
+    input
+  );
+  return res.data.data;
+}
+
+export async function updateClassroomDiscussionComment(
+  classroomId: string,
+  discussionId: string,
+  commentId: string,
+  input: ClassroomDiscussionCommentPatchPayload
+): Promise<ClassroomDiscussionComment> {
+  const res = await api.patch<{ ok: boolean; data: ClassroomDiscussionComment }>(
+    `/classrooms/${classroomId}/discussions/${discussionId}/comments/${commentId}`,
+    input
+  );
+  return res.data.data;
+}
+
+export async function deleteClassroomDiscussionComment(
+  classroomId: string,
+  discussionId: string,
+  commentId: string
+): Promise<void> {
+  await api.delete(`/classrooms/${classroomId}/discussions/${discussionId}/comments/${commentId}`);
+}
+
+export async function requestClassroomDiscussionAssistant(
+  classroomId: string,
+  input: DiscussionAssistantRequest
+): Promise<DiscussionAssistantResponse> {
+  const res = await api.post<{ ok: boolean; data: DiscussionAssistantResponse }>(
+    `/classrooms/${classroomId}/discussions/assistant`,
+    input
+  );
+  return res.data.data;
+}
+
+export type DiscussionAssistantMessageInput = {
+  role: "user" | "assistant";
+  contentMarkdown: string;
+};
+
+export type DiscussionAssistantStreamEvent =
+  | {
+      type: "thought_delta";
+      text: string;
+    }
+  | {
+      type: "answer_delta";
+      text: string;
+    }
+  | {
+      type: "done";
+      answerText?: string;
+      thoughtSummary?: string;
+      data?: DiscussionAssistantResponse;
+    }
+  | {
+      type: "error";
+      error: string;
+    };
+
+function handleDiscussionAssistantStreamLine(
+  line: string,
+  onEvent: (event: DiscussionAssistantStreamEvent) => void
+): { done: boolean; answerText: string; thoughtSummary: string; data?: DiscussionAssistantResponse } | null {
+  const payload = JSON.parse(line) as DiscussionAssistantStreamEvent;
+  if (payload.type === "error") {
+    throw new Error(payload.error || "토론 작성 어시스턴트 스트리밍 처리 중 오류가 발생했습니다.");
+  }
+  if (payload.type === "done") {
+    onEvent(payload);
+    return {
+      done: true,
+      answerText: String(payload.answerText ?? ""),
+      thoughtSummary: String(payload.thoughtSummary ?? ""),
+      data: payload.data
+    };
+  }
+  if (payload.type === "answer_delta" || payload.type === "thought_delta") {
+    onEvent(payload);
+    return null;
+  }
+  throw new Error("알 수 없는 토론 작성 어시스턴트 스트림 이벤트를 받았습니다.");
+}
+
+export async function streamClassroomDiscussionAssistant(
+  classroomId: string,
+  input: DiscussionAssistantRequest & {
+    history?: DiscussionAssistantMessageInput[];
+  },
+  onEvent: (event: DiscussionAssistantStreamEvent) => void,
+  signal?: AbortSignal
+): Promise<{ answerText: string; thoughtSummary: string; data?: DiscussionAssistantResponse }> {
+  const response = await fetch(`/api/classrooms/${classroomId}/discussions/assistant/stream`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json"
+    },
+    credentials: "include",
+    signal,
+    body: JSON.stringify(input)
+  });
+
+  if (!response.ok) {
+    throw parseFetchError(await response.text(), response.status);
+  }
+
+  if (!response.body) {
+    throw new Error("토론 작성 어시스턴트 스트리밍 응답 본문이 비어 있습니다.");
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let finalPayload: { answerText: string; thoughtSummary: string; data?: DiscussionAssistantResponse } | null = null;
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    let lineEnd = buffer.indexOf("\n");
+    while (lineEnd >= 0) {
+      const line = buffer.slice(0, lineEnd).trim();
+      buffer = buffer.slice(lineEnd + 1);
+      lineEnd = buffer.indexOf("\n");
+      if (!line) continue;
+
+      const handled = handleDiscussionAssistantStreamLine(line, onEvent);
+      if (handled?.done) {
+        finalPayload = {
+          answerText: handled.answerText,
+          thoughtSummary: handled.thoughtSummary,
+          data: handled.data
+        };
+      }
+    }
+  }
+  buffer += decoder.decode();
+  const remainingLine = buffer.trim();
+  if (remainingLine) {
+    const handled = handleDiscussionAssistantStreamLine(remainingLine, onEvent);
+    if (handled?.done) {
+      finalPayload = {
+        answerText: handled.answerText,
+        thoughtSummary: handled.thoughtSummary,
+        data: handled.data
+      };
+    }
+  }
+
+  if (!finalPayload) {
+    throw new Error("토론 작성 어시스턴트 스트리밍 최종 결과를 받지 못했습니다.");
+  }
+
+  return finalPayload;
 }
 
 export async function getClassroomCompetencyReport(
@@ -589,6 +960,140 @@ export async function streamStudentReportChat(
   return finalPayload;
 }
 
+export type ReportCriteriaAssistantMessageInput = {
+  role: "user" | "assistant";
+  contentMarkdown: string;
+};
+
+export type ReportCriteriaAssistantStreamStage =
+  | "UNDERSTANDING_REQUEST"
+  | "CHECKING_CRITERIA"
+  | "GENERATING_CRITERION"
+  | "VALIDATING_APPLICABILITY"
+  | "READY_TO_APPLY"
+  | "COMPLETE";
+
+export type ReportCriteriaAssistantStreamEvent =
+  | {
+      type: "stage";
+      stage: ReportCriteriaAssistantStreamStage;
+      label: string;
+      progress: number;
+      detail?: string;
+    }
+  | {
+      type: "thought_delta";
+      text: string;
+    }
+  | {
+      type: "proposal";
+      data: ReportCriteriaAssistantProposal;
+      thoughtSummary?: string;
+    }
+  | {
+      type: "done";
+    }
+  | {
+      type: "error";
+      error: string;
+    };
+
+function handleReportCriteriaAssistantStreamLine(
+  line: string,
+  onEvent: (event: ReportCriteriaAssistantStreamEvent) => void
+): { proposal?: ReportCriteriaAssistantProposal; done?: boolean } {
+  const payload = JSON.parse(line) as ReportCriteriaAssistantStreamEvent;
+  if (payload.type === "error") {
+    throw new Error(payload.error || "평가 항목 도우미 스트리밍 처리 중 오류가 발생했습니다.");
+  }
+  if (
+    payload.type !== "stage" &&
+    payload.type !== "thought_delta" &&
+    payload.type !== "proposal" &&
+    payload.type !== "done"
+  ) {
+    throw new Error("알 수 없는 평가 항목 도우미 스트림 이벤트를 받았습니다.");
+  }
+  onEvent(payload);
+  if (payload.type === "proposal") {
+    return { proposal: payload.data };
+  }
+  if (payload.type === "done") {
+    return { done: true };
+  }
+  return {};
+}
+
+export async function streamReportCriteriaAssistantChat(
+  classroomId: string,
+  input: {
+    message: string;
+    history?: ReportCriteriaAssistantMessageInput[];
+    currentProposal?: { name: string; description: string } | null;
+  },
+  onEvent: (event: ReportCriteriaAssistantStreamEvent) => void,
+  signal?: AbortSignal
+): Promise<ReportCriteriaAssistantProposal> {
+  const response = await fetch(
+    `/api/classrooms/${classroomId}/report/criteria/assistant/stream`,
+    {
+      method: "POST",
+      headers: {
+        "content-type": "application/json"
+      },
+      credentials: "include",
+      signal,
+      body: JSON.stringify(input)
+    }
+  );
+
+  if (!response.ok) {
+    throw parseFetchError(await response.text(), response.status);
+  }
+
+  if (!response.body) {
+    throw new Error("평가 항목 도우미 스트리밍 응답 본문이 비어 있습니다.");
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let finalProposal: ReportCriteriaAssistantProposal | null = null;
+  let sawDone = false;
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    let lineEnd = buffer.indexOf("\n");
+    while (lineEnd >= 0) {
+      const line = buffer.slice(0, lineEnd).trim();
+      buffer = buffer.slice(lineEnd + 1);
+      lineEnd = buffer.indexOf("\n");
+      if (!line) continue;
+      const handled = handleReportCriteriaAssistantStreamLine(line, onEvent);
+      if (handled.proposal) finalProposal = handled.proposal;
+      if (handled.done) sawDone = true;
+    }
+  }
+  buffer += decoder.decode();
+  const remainingLine = buffer.trim();
+  if (remainingLine) {
+    const handled = handleReportCriteriaAssistantStreamLine(remainingLine, onEvent);
+    if (handled.proposal) finalProposal = handled.proposal;
+    if (handled.done) sawDone = true;
+  }
+
+  if (!sawDone) {
+    throw new Error("평가 항목 도우미 스트리밍이 완료 이벤트 없이 종료되었습니다.");
+  }
+  if (!finalProposal) {
+    throw new Error("평가 항목 도우미 최종 제안을 받지 못했습니다.");
+  }
+
+  return finalProposal;
+}
+
 export async function getWeeks(classroomId: string): Promise<Week[]> {
   const res = await api.get<{ ok: boolean; data: Week[] }>(`/classrooms/${classroomId}/weeks`);
   return res.data.data;
@@ -614,6 +1119,27 @@ export async function getLectures(weekId: string): Promise<LectureItem[]> {
   return res.data.data;
 }
 
+export async function getClassroomMaterials(classroomId: string): Promise<ClassroomMaterialItem[]> {
+  const res = await api.get<{ ok: boolean; data: ClassroomMaterialItem[] }>(
+    `/classrooms/${classroomId}/materials`
+  );
+  return res.data.data;
+}
+
+export async function getClassroomAttendance(classroomId: string): Promise<ClassroomAttendanceSummary> {
+  const res = await api.get<{ ok: boolean; data: ClassroomAttendanceSummary }>(
+    `/classrooms/${classroomId}/attendance`
+  );
+  return res.data.data;
+}
+
+export async function getMyClassroomAttendance(classroomId: string): Promise<StudentClassroomAttendanceSummary> {
+  const res = await api.get<{ ok: boolean; data: StudentClassroomAttendanceSummary }>(
+    `/classrooms/${classroomId}/attendance/me`
+  );
+  return res.data.data;
+}
+
 export async function createLecture(weekId: string, title: string, pdfFile: File): Promise<LectureItem> {
   const form = new FormData();
   form.append("title", title);
@@ -626,6 +1152,15 @@ export async function createLecture(weekId: string, title: string, pdfFile: File
 
 export async function deleteLecture(lectureId: string): Promise<void> {
   await api.delete(`/lectures/${lectureId}`);
+}
+
+export async function updateLectureTitle(lectureId: string, title: string): Promise<LectureItem> {
+  const res = await api.patch<{ ok: boolean; data: LectureItem }>(`/lectures/${lectureId}`, { title });
+  return res.data.data;
+}
+
+export function getLectureDownloadUrl(lectureId: string): string {
+  return `/api/lectures/${encodeURIComponent(lectureId)}/download`;
 }
 
 export type TeacherExamDraftPayload = Partial<
@@ -662,6 +1197,19 @@ export async function updateTeacherExam(
   input: TeacherExamDraftPayload
 ): Promise<TeacherExam> {
   const res = await api.put<{ ok: boolean; data: TeacherExam }>(`/exams/${examId}`, input);
+  return res.data.data;
+}
+
+export type TeacherExamSettingsPayload = Pick<
+  TeacherExamRevision,
+  "title" | "availableFrom" | "availableUntil" | "timeLimitMinutes"
+>;
+
+export async function updateTeacherExamSettings(
+  examId: string,
+  input: TeacherExamSettingsPayload
+): Promise<TeacherExam> {
+  const res = await api.patch<{ ok: boolean; data: TeacherExam }>(`/exams/${examId}/settings`, input);
   return res.data.data;
 }
 
@@ -727,7 +1275,8 @@ export async function getTeacherExamReport(examId: string): Promise<TeacherExamR
 
 export async function uploadExamStudioPdfContext(
   weekId: string,
-  pdfFile: File
+  pdfFile: File,
+  signal?: AbortSignal
 ): Promise<{ text: string; numPages: number; truncated: boolean }> {
   const form = new FormData();
   form.append("pdf", pdfFile);
@@ -735,7 +1284,8 @@ export async function uploadExamStudioPdfContext(
     ok: boolean;
     data: { text: string; numPages: number; truncated: boolean };
   }>(`/weeks/${weekId}/exam-studio/pdf-context`, form, {
-    headers: { "Content-Type": "multipart/form-data" }
+    headers: { "Content-Type": "multipart/form-data" },
+    signal
   });
   return res.data.data;
 }
@@ -790,22 +1340,85 @@ export type ExamStudioChatStreamEvent =
       error: string;
     };
 
+export type ExamStudioStreamFailureReason =
+  | "missing_done"
+  | "missing_proposal"
+  | "invalid_ndjson"
+  | "stream_error"
+  | "malformed_order"
+  | "unknown";
+
+export class ExamStudioStreamError extends Error {
+  readonly reason: ExamStudioStreamFailureReason;
+
+  constructor(reason: ExamStudioStreamFailureReason, message: string) {
+    super(message);
+    this.name = "ExamStudioStreamError";
+    this.reason = reason;
+  }
+}
+
+type ExamStudioStreamParseState = {
+  sawProposal: boolean;
+  sawDone: boolean;
+  finalProposal: ExamStudioProposal | null;
+};
+
 function handleExamStudioStreamLine(
   line: string,
+  state: ExamStudioStreamParseState,
   onEvent: (event: ExamStudioChatStreamEvent) => void
-): { proposal?: ExamStudioProposal; done?: boolean } {
-  const payload = JSON.parse(line) as ExamStudioChatStreamEvent;
-  if (payload.type === "error") {
-    throw new Error(payload.error || "시험 설계 스트리밍 처리 중 오류가 발생했습니다.");
+): void {
+  let payload: ExamStudioChatStreamEvent;
+  try {
+    payload = JSON.parse(line) as ExamStudioChatStreamEvent;
+  } catch (error) {
+    throw new ExamStudioStreamError(
+      "invalid_ndjson",
+      error instanceof Error ? `시험 설계 스트리밍 JSON을 해석하지 못했습니다: ${error.message}` : "시험 설계 스트리밍 JSON을 해석하지 못했습니다."
+    );
   }
-  onEvent(payload);
+
+  if (!payload || typeof payload !== "object" || typeof payload.type !== "string") {
+    throw new ExamStudioStreamError("invalid_ndjson", "시험 설계 스트리밍 이벤트 형식이 올바르지 않습니다.");
+  }
+  if (state.sawDone) {
+    throw new ExamStudioStreamError("malformed_order", "시험 설계 스트리밍 완료 이후 추가 이벤트를 받았습니다.");
+  }
+  if (payload.type === "error") {
+    throw new ExamStudioStreamError("stream_error", "시험 설계 스트리밍 처리 중 오류가 발생했습니다.");
+  }
+
   if (payload.type === "proposal") {
-    return { proposal: payload.data };
+    if (state.sawProposal) {
+      throw new ExamStudioStreamError("malformed_order", "시험 설계 스트리밍 제안 이벤트가 중복되었습니다.");
+    }
+    state.sawProposal = true;
+    state.finalProposal = payload.data;
+    if (payload.thoughtSummary) {
+      onEvent({
+        type: "proposal",
+        thoughtSummary: payload.thoughtSummary,
+        data: {
+          answerMarkdown: "",
+          replyMarkdown: "",
+          source: payload.data?.source ?? "AI"
+        }
+      });
+    }
+    return;
   }
   if (payload.type === "done") {
-    return { done: true };
+    state.sawDone = true;
+    onEvent(payload);
+    return;
   }
-  return {};
+  if (payload.type === "stage" || payload.type === "thought_delta") {
+    onEvent(payload);
+    return;
+  }
+
+  throw new ExamStudioStreamError("invalid_ndjson", "알 수 없는 시험 설계 스트리밍 이벤트입니다.");
 }
 
 export async function streamExamStudioChat(
@@ -843,8 +1456,11 @@ export async function streamExamStudioChat(
   const reader = response.body.getReader();
   const decoder = new TextDecoder();
   let buffer = "";
-  let finalProposal: ExamStudioProposal | null = null;
-  let sawDone = false;
+  const parseState: ExamStudioStreamParseState = {
+    sawProposal: false,
+    sawDone: false,
+    finalProposal: null
+  };
 
   while (true) {
     const { done, value } = await reader.read();
@@ -856,27 +1472,23 @@ export async function streamExamStudioChat(
       buffer = buffer.slice(lineEnd + 1);
       lineEnd = buffer.indexOf("\n");
       if (!line) continue;
-      const handled = handleExamStudioStreamLine(line, onEvent);
-      if (handled.proposal) finalProposal = handled.proposal;
-      if (handled.done) sawDone = true;
+      handleExamStudioStreamLine(line, parseState, onEvent);
     }
   }
   buffer += decoder.decode();
   const remainingLine = buffer.trim();
   if (remainingLine) {
-    const handled = handleExamStudioStreamLine(remainingLine, onEvent);
-    if (handled.proposal) finalProposal = handled.proposal;
-    if (handled.done) sawDone = true;
+    handleExamStudioStreamLine(remainingLine, parseState, onEvent);
   }
 
-  if (!sawDone) {
-    throw new Error("시험 설계 스트리밍이 완료 이벤트 없이 종료되었습니다.");
+  if (!parseState.sawDone) {
+    throw new ExamStudioStreamError("missing_done", "시험 설계 스트리밍이 완료 이벤트 없이 종료되었습니다.");
   }
-  if (!finalProposal) {
-    throw new Error("시험 설계 스트리밍 최종 제안을 받지 못했습니다.");
+  if (!parseState.finalProposal) {
+    throw new ExamStudioStreamError("missing_proposal", "시험 설계 스트리밍 최종 제안을 받지 못했습니다.");
   }
 
-  return finalProposal;
+  return parseState.finalProposal;
 }
 
 export async function getSessionByLecture(lectureId: string): Promise<{
@@ -932,6 +1544,7 @@ export async function sendSessionEvent(
     };
     patch: {
       currentPage: number;
+      learningProgressPage: number;
       progressText: string;
       learnerModel: SessionState["learnerModel"];
       activeIntervention?: SessionState["activeIntervention"];

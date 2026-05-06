@@ -273,6 +273,8 @@ export const studentCompetencyReportSchema = z.object({
     quizCount: z.number().int().min(0),
     gradedQuizCount: z.number().int().min(0),
     averageQuizScore: z.number().min(0).max(100),
+    teacherExamResultCount: z.number().int().min(0).optional(),
+    teacherExamAverageScore: z.number().min(0).max(100).optional(),
     feedbackCount: z.number().int().min(0),
     memoryRefreshCount: z.number().int().min(0)
   }),

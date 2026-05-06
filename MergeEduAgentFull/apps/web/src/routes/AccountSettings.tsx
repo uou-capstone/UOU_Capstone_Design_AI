@@ -5,7 +5,7 @@ export function AccountSettingsRoute() {
   const navigate = useNavigate();
 
   return (
-    <main className="page-shell account-settings-page">
+    <main className="page-shell account-settings-page" data-testid="app-shell-content">
       <section className="account-settings-header fade-in">
         <button
           type="button"

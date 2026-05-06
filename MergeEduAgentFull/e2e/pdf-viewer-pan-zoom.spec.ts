@@ -135,6 +135,7 @@ async function setupPdfPanFixture(page: Page, suffix: string) {
     sessionId,
     lectureId,
     currentPage: 1,
+    learningProgressPage: 0,
     messages: [
       {
         id: `msg_seed_${suffix}`,
@@ -166,7 +167,8 @@ async function setupPdfPanFixture(page: Page, suffix: string) {
     },
     patch: {
       currentPage: session.currentPage,
-      progressText: `~${session.currentPage}페이지까지 진행`,
+      learningProgressPage: session.learningProgressPage,
+      progressText: `~${session.learningProgressPage}페이지까지 진행`,
       learnerModel: session.learnerModel,
       activeIntervention: null,
       quizRecord: null
@@ -277,6 +279,7 @@ test("PDF viewer zoom slider and drag pan inspect enlarged pages", async ({ page
     sessionId: "ses_pdf_pan",
     lectureId: "lec_pdf_pan",
     currentPage: 1,
+    learningProgressPage: 0,
     messages: [
       {
         id: "msg_seed",
@@ -308,7 +311,8 @@ test("PDF viewer zoom slider and drag pan inspect enlarged pages", async ({ page
     },
     patch: {
       currentPage: session.currentPage,
-      progressText: `~${session.currentPage}페이지까지 진행`,
+      learningProgressPage: session.learningProgressPage,
+      progressText: `~${session.learningProgressPage}페이지까지 진행`,
       learnerModel: session.learnerModel,
       activeIntervention: null,
       quizRecord: null
@@ -495,7 +499,7 @@ test("PDF zoom stays contained on a short desktop viewport", async ({ page }) =>
   await page.setViewportSize(viewportSize);
   const { lectureId } = await setupPdfPanFixture(page, "short_desktop");
   const { after } = await openFixtureAndZoom(page, lectureId);
-  const expectedWorkspaceHeight = viewportSize.height - 68 - 62 - 50;
+  const expectedWorkspaceHeight = viewportSize.height - 62 - 92;
   expect(after.sessionLayout.height).toBeLessThanOrEqual(expectedWorkspaceHeight + 2);
   expect(after.pdfShell.height).toBeLessThanOrEqual(expectedWorkspaceHeight + 2);
   expect(after.chatShell.height).toBeLessThanOrEqual(expectedWorkspaceHeight + 2);
@@ -515,6 +519,7 @@ test("late page-change stream does not overwrite the current session page", asyn
     sessionId: "ses_pdf_pan_race",
     lectureId: "lec_pdf_pan_race",
     currentPage: 1,
+    learningProgressPage: 0,
     messages: [
       {
         id: "msg_race_seed",
@@ -534,7 +539,7 @@ test("late page-change stream does not overwrite the current session page", asyn
     activeIntervention: null
   };
 
-  const eventResponse = (pageNumber: number) => ({
+  const eventResponse = (pageNumber: number, learningProgressPage = 0) => ({
     ok: true,
     newMessages: [
       {
@@ -554,7 +559,8 @@ test("late page-change stream does not overwrite the current session page", asyn
     },
     patch: {
       currentPage: pageNumber,
-      progressText: `~${pageNumber}페이지까지 진행`,
+      learningProgressPage,
+      progressText: `~${learningProgressPage}페이지까지 진행`,
       learnerModel: session.learnerModel,
       activeIntervention: null,
       quizRecord: null
@@ -654,6 +660,8 @@ test("late page-change stream does not overwrite the current session page", asyn
   await page.getByRole("button", { name: "다음" }).click();
   await firstPageChangeSeen;
   await expect(page.getByText("2 / 2 페이지")).toBeVisible();
+  await expect(page.locator(".session-progress-pill")).toHaveText("~0페이지까지 진행");
+  await expect(page.locator(".session-chat-head")).toContainText("0 / 2 page");
 
   await page.getByRole("button", { name: "이전" }).click();
   await expect(page.getByText("1 / 2 페이지")).toBeVisible();
@@ -663,7 +671,7 @@ test("late page-change stream does not overwrite the current session page", asyn
     await firstPageChangeRoute.fulfill({
       status: 200,
       contentType: "application/x-ndjson; charset=utf-8",
-      body: `${JSON.stringify({ type: "final", data: eventResponse(2) })}\n`
+      body: `${JSON.stringify({ type: "final", data: eventResponse(2, 2) })}\n`
     }).catch(() => {
       // The intended implementation aborts the superseded request; either abort or stale-final ignore is acceptable here.
     });
@@ -672,4 +680,6 @@ test("late page-change stream does not overwrite the current session page", asyn
   await page.waitForTimeout(200);
   await expect(page.getByText("1 / 2 페이지")).toBeVisible();
   await expect(page.getByText("late page response 2")).toHaveCount(0);
+  await expect(page.locator(".session-progress-pill")).toHaveText("~0페이지까지 진행");
+  await expect(page.locator(".session-chat-head")).toContainText("0 / 2 page");
 });

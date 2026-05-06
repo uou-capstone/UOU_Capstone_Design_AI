@@ -8,8 +8,7 @@
     "build": "tsc -p tsconfig.json",
     "start": "node dist/index.js",
     "test": "vitest run",
-    "seed:linear-regression-demo": "tsx src/scripts/seedLinearRegressionDemo.ts",
-    "seed:temp-accounts": "tsx src/scripts/seedTempAccounts.ts"
+    "seed:linear-regression-demo": "tsx src/scripts/seedLinearRegressionDemo.ts"
   },
   "dependencies": {
     "@types/nodemailer": "^8.0.0",

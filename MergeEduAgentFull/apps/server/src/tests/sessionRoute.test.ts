@@ -58,6 +58,7 @@ function makeState(): SessionState {
         evidence: ["WRONG"]
       }
     ],
+    learningProgressPage: 2,
     activeIntervention: null,
     qaThread: createInitialQaThreadMemory(),
     conversationSummary: "",
@@ -70,10 +71,12 @@ describe("buildProtectedSessionSaveState", () => {
     const base = makeState();
     const next = buildProtectedSessionSaveState(base, {
       currentPage: 99,
+      learningProgressPage: 99,
       quizAssessments: []
     } as Partial<SessionState>);
 
     expect(next.currentPage).toBe(base.currentPage);
+    expect(next.learningProgressPage).toBe(2);
     expect(next.quizAssessments).toHaveLength(1);
     expect(next.quizAssessments?.[0]?.quizId).toBe("quiz_1");
     expect(next.updatedAt).not.toBe(base.updatedAt);
@@ -186,6 +189,7 @@ describe("sessionRouter event stream", () => {
                 },
                 patch: {
                   currentPage: 1,
+                  learningProgressPage: 1,
                   progressText: "~1페이지까지 진행",
                   learnerModel: {
                     level: "INTERMEDIATE",

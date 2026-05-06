@@ -250,6 +250,22 @@ export function examsRouter(deps: ServerDeps): Router {
     }
   });
 
+  router.patch("/exams/:examId/settings", requireExamTeacher(deps, "exam_settings_update"), async (req, res, next) => {
+    try {
+      const exam = await readExamOr404(deps, res, String(req.params.examId));
+      if (!exam) return;
+      const week = await requireWeekWritable(deps, req, res, exam.weekId);
+      if (!week) {
+        logForbiddenIfNeeded(deps, req, res, "exam_settings_update");
+        return;
+      }
+      const data = await service.updateSettings(exam.id, req.body ?? {});
+      res.json({ ok: true, data: service.teacherDto(data) });
+    } catch (error) {
+      handleExamError(error, res, next);
+    }
+  });
+
   router.post("/exams/:examId/publish", requireExamTeacher(deps, "exam_publish"), async (req, res, next) => {
     try {
       const exam = await readExamOr404(deps, res, String(req.params.examId));
@@ -524,7 +540,7 @@ export function examsRouter(deps: ServerDeps): Router {
         writeStage("VALIDATING_JSON", "JSON 검증", 0.76, "LLM 응답을 시험 스튜디오 명령으로 검증합니다.");
         const proposal = service.sanitizeExamStudioProposal(result.proposal, req.body?.currentDraft ?? {});
         write({ type: "proposal", data: proposal, thoughtSummary: EXAM_STUDIO_SAFE_THOUGHT_SUMMARY });
-        writeStage("APPLYING_TO_STUDIO", "스튜디오 반영", 0.92, "브라우저에서 왼쪽 draft에 반영할 준비를 마쳤습니다.");
+        writeStage("APPLYING_TO_STUDIO", "제안 준비", 0.92, "교사가 검토 후 반영할 제안을 준비했습니다.");
         writeStage("COMPLETE", "완료", 1);
         write({ type: "done" });
         deps.examLogger?.event("[exam_ai_studio_stream_complete]", {
@@ -559,7 +575,7 @@ export function examsRouter(deps: ServerDeps): Router {
             stage: "VALIDATING_JSON",
             label: "복구 응답 준비",
             progress: 0.86,
-            detail: error instanceof Error ? error.message : "AI stream failed"
+            detail: "AI 응답을 안전한 복구 제안으로 전환하고 있습니다."
           })}\n`
         );
         res.write(`${JSON.stringify({ type: "proposal", data: fallback, thoughtSummary: "" })}\n`);

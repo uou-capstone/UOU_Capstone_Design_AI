@@ -55,6 +55,22 @@ export function ChatInput({ disabled, onSend }: Props) {
 
   return (
     <form onSubmit={submit} className="chat-input" aria-busy={loading}>
+      <button
+        type="button"
+        className="chat-attach-button"
+        aria-label="첨부 파일"
+        disabled={disabled || loading}
+      >
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <path
+            d="M8 12.8l6.6-6.6a3 3 0 0 1 4.2 4.2l-8.2 8.2a5 5 0 0 1-7.1-7.1l8.2-8.2"
+            stroke="currentColor"
+            strokeWidth="1.8"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </svg>
+      </button>
       <label className="sr-only" htmlFor="session-chat-input">
         질문 또는 요청
       </label>

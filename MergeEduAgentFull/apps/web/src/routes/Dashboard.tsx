@@ -2,20 +2,40 @@ import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { ClassroomCard } from "../components/cards/ClassroomCard";
 import {
+  acceptClassroomInvitation,
   createClassroom,
   deleteClassroom,
-  getClassrooms
+  getClassrooms,
+  getMyClassroomInvitations
 } from "../api/endpoints";
 import { useAuth } from "../auth/useAuth";
 import { useDialogFocus } from "../components/ui/useDialogFocus";
-import { Classroom } from "../types";
+import { Classroom, ClassroomInvitation } from "../types";
+
+function formatInvitationTime(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "-";
+  return new Intl.DateTimeFormat("ko-KR", {
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit"
+  }).format(date);
+}
 
 export function DashboardRoute() {
   const { user } = useAuth();
   const [classrooms, setClassrooms] = useState<Classroom[]>([]);
+  const [studentInvitations, setStudentInvitations] = useState<ClassroomInvitation[]>([]);
+  const [invitationLoading, setInvitationLoading] = useState(false);
+  const [invitationError, setInvitationError] = useState("");
+  const [acceptingInvitationId, setAcceptingInvitationId] = useState("");
   const [title, setTitle] = useState("");
+  const [classroomsLoading, setClassroomsLoading] = useState(false);
+  const [classroomError, setClassroomError] = useState("");
   const [loading, setLoading] = useState(false);
   const [openAddModal, setOpenAddModal] = useState(false);
+  const [addError, setAddError] = useState("");
   const [error, setError] = useState("");
   const addModalRef = useRef<HTMLDivElement | null>(null);
   const addModalBackdropRef = useRef<HTMLDivElement | null>(null);
@@ -24,15 +44,43 @@ export function DashboardRoute() {
   const closeAddModal = useCallback(() => {
     setOpenAddModal(false);
     setTitle("");
+    setAddError("");
   }, []);
 
-  async function refresh() {
-    setClassrooms(await getClassrooms());
+  async function refresh(options: { preserveClassroomsOnError?: boolean } = {}) {
+    setClassroomsLoading(true);
+    setClassroomError("");
+    try {
+      const nextClassrooms = await getClassrooms();
+      setClassrooms(nextClassrooms);
+    } catch (err) {
+      if (!options.preserveClassroomsOnError) {
+        setClassrooms([]);
+      }
+      setClassroomError(err instanceof Error ? err.message : "강의실 목록을 불러오지 못했습니다.");
+    } finally {
+      setClassroomsLoading(false);
+    }
+
+    if (user?.role !== "student") {
+      setStudentInvitations([]);
+      setInvitationError("");
+      return;
+    }
+    setInvitationLoading(true);
+    setInvitationError("");
+    try {
+      setStudentInvitations(await getMyClassroomInvitations());
+    } catch (err) {
+      setInvitationError(err instanceof Error ? err.message : "받은 초대를 불러오지 못했습니다.");
+    } finally {
+      setInvitationLoading(false);
+    }
   }
 
   useEffect(() => {
     refresh().catch(console.error);
-  }, []);
+  }, [user?.role]);
 
   useEffect(() => {
     if (!openAddModal) return;
@@ -47,12 +95,21 @@ export function DashboardRoute() {
 
   async function onAdd(event: FormEvent) {
     event.preventDefault();
-    if (!title.trim() || user?.role !== "teacher") return;
+    const trimmedTitle = title.trim();
+    if (!trimmedTitle || user?.role !== "teacher" || loading) return;
+    setAddError("");
     setLoading(true);
     try {
-      await createClassroom(title.trim());
+      const createdClassroom = await createClassroom(trimmedTitle);
+      setClassrooms((prev) =>
+        prev.some((classroom) => classroom.id === createdClassroom.id)
+          ? prev
+          : [...prev, createdClassroom]
+      );
       closeAddModal();
-      await refresh();
+      await refresh({ preserveClassroomsOnError: true });
+    } catch (err) {
+      setAddError(err instanceof Error ? err.message : "강의실 생성에 실패했습니다.");
     } finally {
       setLoading(false);
     }
@@ -71,6 +128,20 @@ export function DashboardRoute() {
     }
   }
 
+  async function onAcceptInvitation(invitationId: string) {
+    if (user?.role !== "student") return;
+    setAcceptingInvitationId(invitationId);
+    setInvitationError("");
+    try {
+      await acceptClassroomInvitation(invitationId);
+      await refresh();
+    } catch (err) {
+      setInvitationError(err instanceof Error ? err.message : "초대 수락에 실패했습니다.");
+    } finally {
+      setAcceptingInvitationId("");
+    }
+  }
+
   const isTeacher = user?.role === "teacher";
   const dashboardTitle = isTeacher ? "내 강의실" : "초대받은 강의실";
   const dashboardCopy = isTeacher
@@ -78,22 +149,17 @@ export function DashboardRoute() {
     : "선생님이 초대한 강의실과 학습 세션만 이곳에 표시됩니다.";
 
   return (
-    <main className="page-shell">
-      <section className="dashboard-hero fade-in">
-        <div>
-          <span className="eyebrow">WORKSPACE</span>
+    <main className="page-shell" data-testid="app-shell-content">
+      <section className="dashboard-hero fade-in" data-testid="dashboard-hero">
+        <div className="dashboard-hero-copy">
+          <span className="dashboard-status-pill">{isTeacher ? "관리 중" : "학습 중"}</span>
           <h1 className="page-title">{dashboardTitle}</h1>
           <p className="page-subtitle">{dashboardCopy}</p>
         </div>
-        <div className="dashboard-hero-panel" aria-label="강의실 요약">
-          <span className="dashboard-hero-pill">
-            {isTeacher ? "교사용 관리" : "학생 학습"}
-          </span>
-          <strong>{classrooms.length}개</strong>
-          <small>{isTeacher ? "생성한 강의실" : "참여 중인 강의실"}</small>
-          {user?.role === "student" ? (
-            <span className="dashboard-code">초대 코드 #{user.inviteCode}</span>
-          ) : null}
+        <div className="dashboard-hero-visual" aria-hidden="true">
+          <span className="dashboard-visual-tile dashboard-visual-tile-lg" />
+          <span className="dashboard-visual-tile dashboard-visual-tile-play" />
+          <span className="dashboard-visual-tile dashboard-visual-tile-sm" />
         </div>
       </section>
 
@@ -103,37 +169,118 @@ export function DashboardRoute() {
         </p>
       ) : null}
 
-      <section className="grid cards dashboard-cards">
-        {classrooms.map((classroom) => (
-          <ClassroomCard
-            key={classroom.id}
-            classroom={classroom}
-            onDelete={onDelete}
-            canDelete={isTeacher}
-          />
-        ))}
+      <section className="dashboard-content-grid" data-testid="dashboard-content-grid">
+        <section className="dashboard-classroom-panel" data-testid="dashboard-classroom-panel">
+          <div className="dashboard-card-head dashboard-panel-head">
+            <div>
+              <h2>강의실 목록</h2>
+              <p>{isTeacher ? "수업 공간을 만들고 관리합니다." : "참여 중인 강의실로 이동합니다."}</p>
+            </div>
+          </div>
 
-        {isTeacher ? (
-          <button
-            type="button"
-            className="add-classroom-card fade-in"
-            onClick={() => setOpenAddModal(true)}
-          >
-            <span className="add-classroom-plus">+</span>
-            <span className="dashboard-add-label">강의실 추가</span>
-            <span className="dashboard-add-copy">
-              새 수업 공간을 만들고 PDF 자료를 연결하세요.
-            </span>
-          </button>
-        ) : null}
-      </section>
+          {!isTeacher ? (
+            <section
+              className="card dashboard-panel-invitation-inbox student-invitation-inbox"
+              data-testid="student-invitation-inbox"
+            >
+              <div className="dashboard-card-head">
+                <div>
+                  <h2>받은 초대</h2>
+                  <p>선생님이 보낸 강의실 초대를 수락하세요.</p>
+                </div>
+                <span>{studentInvitations.length}건</span>
+              </div>
+              {invitationError ? (
+                <div className="student-inbox-alert" role="alert">
+                  <span>{invitationError}</span>
+                  <button className="btn ghost" onClick={() => refresh()} disabled={invitationLoading}>
+                    다시 시도
+                  </button>
+                </div>
+              ) : null}
+              <div className="student-invitation-list">
+                {invitationLoading && studentInvitations.length === 0 ? (
+                  <div className="student-invitation-empty">초대를 확인하는 중...</div>
+                ) : null}
+                {!invitationLoading && studentInvitations.length === 0 ? (
+                  <div className="student-invitation-empty">대기 중인 초대가 없습니다.</div>
+                ) : null}
+                {studentInvitations.map((invitation) => (
+                  <article key={invitation.id} className="student-invitation-row">
+                    <span className="student-invitation-avatar" aria-hidden="true">
+                      {invitation.classroomTitle.slice(0, 1)}
+                    </span>
+                    <span className="student-invitation-copy">
+                      <strong>{invitation.classroomTitle}</strong>
+                      <small>
+                        {invitation.teacherDisplayName} · {formatInvitationTime(invitation.invitedAt)} 초대
+                      </small>
+                    </span>
+                    <button
+                      className="btn student-invitation-accept"
+                      onClick={() => onAcceptInvitation(invitation.id)}
+                      disabled={acceptingInvitationId === invitation.id}
+                    >
+                      {acceptingInvitationId === invitation.id ? "수락 중" : "수락"}
+                    </button>
+                  </article>
+                ))}
+              </div>
+            </section>
+          ) : null}
 
-      {!isTeacher && classrooms.length === 0 ? (
-        <section className="card empty-state dashboard-empty-state">
-          <strong>아직 초대받은 강의실이 없습니다.</strong>
-          <span>선생님에게 이름과 초대 코드를 알려주면 이곳에 강의실이 표시됩니다.</span>
+          {classroomError ? (
+            <section className="student-inbox-alert dashboard-classroom-alert" role="alert">
+              <span>{classroomError}</span>
+              <button
+                className="btn ghost"
+                onClick={() => refresh({ preserveClassroomsOnError: classrooms.length > 0 })}
+                disabled={classroomsLoading}
+              >
+                다시 시도
+              </button>
+            </section>
+          ) : null}
+
+          {classroomsLoading && classrooms.length === 0 ? (
+            <section className="empty-state dashboard-empty-state">
+              강의실 목록을 불러오는 중...
+            </section>
+          ) : null}
+
+          <section className="dashboard-classroom-list" data-testid="dashboard-classroom-list">
+            {classrooms.map((classroom) => (
+              <ClassroomCard
+                key={classroom.id}
+                classroom={classroom}
+                onDelete={onDelete}
+                canDelete={isTeacher}
+              />
+            ))}
+
+            {isTeacher ? (
+              <button
+                type="button"
+                className="add-classroom-card fade-in"
+                onClick={() => setOpenAddModal(true)}
+              >
+                <span className="add-classroom-plus">+</span>
+                <span className="dashboard-add-label">강의실 추가</span>
+                <span className="dashboard-add-copy">
+                  새 수업 공간을 만들고 PDF 자료를 연결하세요.
+                </span>
+              </button>
+            ) : null}
+          </section>
+
+          {!classroomsLoading && !classroomError && !isTeacher && classrooms.length === 0 ? (
+            <section className="empty-state dashboard-empty-state">
+              <strong>아직 초대받은 강의실이 없습니다.</strong>
+              <span>선생님에게 이름과 초대 코드를 알려주면 이곳에 강의실이 표시됩니다.</span>
+            </section>
+          ) : null}
         </section>
-      ) : null}
+      </section>
 
       {openAddModal ? createPortal(
         <div
@@ -165,10 +312,18 @@ export function DashboardRoute() {
                   className="input"
                   placeholder="예: 메타버스 이해"
                   value={title}
-                  onChange={(e) => setTitle(e.target.value)}
+                  onChange={(e) => {
+                    setTitle(e.target.value);
+                    if (addError) setAddError("");
+                  }}
                   autoFocus
                 />
               </div>
+              {addError ? (
+                <p className="form-error" role="alert">
+                  {addError}
+                </p>
+              ) : null}
               <div className="form-actions">
                 <button
                   type="button"

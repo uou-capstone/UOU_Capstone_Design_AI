@@ -218,7 +218,10 @@ describe("exam studio stream route", () => {
       expect(response.status).toBe(200);
       const events = parseNdjson(await response.text());
       expect(events.some((event) => event.type === "stage" && event.stage === "PREPARING")).toBe(true);
+      expect(events.some((event) => event.type === "stage" && event.stage === "APPLYING_TO_STUDIO" && event.label === "제안 준비")).toBe(true);
       expect(events.some((event) => event.type === "thought_delta" && event.text.includes("JSON"))).toBe(true);
+      expect(JSON.stringify(events)).not.toContain("스튜디오 반영");
+      expect(JSON.stringify(events)).not.toContain("왼쪽 draft에 반영");
       expect(bridgeInput?.currentDraft).toMatchObject({ title: "초안", timeLimitMinutes: 30 });
       expect(bridgeInput?.currentKstIso).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\+09:00$/);
       expect(bridgeInput?.timeZone).toBe("Asia/Seoul");

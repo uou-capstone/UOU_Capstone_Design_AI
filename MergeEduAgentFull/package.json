@@ -12,7 +12,9 @@
     "build": "npm run build -w apps/server && npm run build -w apps/web",
     "test": "npm run test -w apps/server",
     "test:all": "npm run test && npm run test:e2e",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "test:e2e:exam-studio": "playwright test e2e/teacher-exam-studio.spec.ts --grep \"teacher exam studio|teacher publishes\"",
+    "verify:exam-studio": "npm run build -w apps/web && npm run test:e2e:exam-studio"
   },
   "devDependencies": {
     "@playwright/test": "^1.59.1",

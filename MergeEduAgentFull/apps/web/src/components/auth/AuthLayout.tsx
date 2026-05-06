@@ -6,8 +6,8 @@ export function AuthLayout({ children }: { children: ReactNode }) {
       <section className="card auth-panel">
         <div className="auth-rail">
           <div>
-            <div className="auth-rail-mark" aria-hidden="true">M</div>
-            <h1>Merge Edu Agent</h1>
+            <div className="auth-rail-mark" aria-hidden="true">EP</div>
+            <h1>EduPilot</h1>
             <p>계정으로 강의실과 학습 기록을 안전하게 분리합니다.</p>
           </div>
           <div className="auth-rail-list" aria-label="서비스 핵심 기능">

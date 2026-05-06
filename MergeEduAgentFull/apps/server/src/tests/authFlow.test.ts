@@ -10,11 +10,15 @@ import { DevEmailSender, EmailSender, VerificationEmailInput } from "../services
 import { RequestEncryptionService } from "../services/security/RequestEncryptionService.js";
 import { JsonStore } from "../services/storage/JsonStore.js";
 
-const testDir = path.resolve(process.cwd(), "apps/server/data-auth-test");
-const uploadDir = path.resolve(process.cwd(), "apps/server/uploads-auth-test");
+const dataDirPrefix = path.resolve(process.cwd(), "apps/server/data-auth-test-");
+const uploadDirPrefix = path.resolve(process.cwd(), "apps/server/uploads-auth-test-");
+let testDir = "";
+let uploadDir = "";
 const origin = "http://localhost:5173";
 
 beforeEach(async () => {
+  testDir = await fs.mkdtemp(dataDirPrefix);
+  uploadDir = await fs.mkdtemp(uploadDirPrefix);
   process.env.PORT = "4000";
   process.env.WEB_PORT = "5173";
   process.env.APP_ORIGIN = origin;
@@ -24,8 +28,8 @@ beforeEach(async () => {
   process.env.CONTEXT_MAX_CHARS = "12000";
   process.env.RECENT_MESSAGES_N = "12";
   process.env.AI_BRIDGE_URL = "http://127.0.0.1:8001";
-  process.env.DATA_DIR = "./apps/server/data-auth-test";
-  process.env.UPLOAD_DIR = "./apps/server/uploads-auth-test";
+  process.env.DATA_DIR = testDir;
+  process.env.UPLOAD_DIR = uploadDir;
   process.env.AUTH_DEV_EXPOSE_VERIFICATION_CODE = "true";
   Object.assign(appConfig, {
     appOrigin: origin,
@@ -47,13 +51,11 @@ beforeEach(async () => {
     googleOAuthClientSecret: undefined,
     googleOAuthRedirectUri: undefined
   });
-  await fs.rm(testDir, { recursive: true, force: true });
-  await fs.rm(uploadDir, { recursive: true, force: true });
 });
 
 afterEach(async () => {
-  await fs.rm(testDir, { recursive: true, force: true });
-  await fs.rm(uploadDir, { recursive: true, force: true });
+  if (testDir) await fs.rm(testDir, { recursive: true, force: true });
+  if (uploadDir) await fs.rm(uploadDir, { recursive: true, force: true });
 });
 
 async function startTestServer() {
@@ -225,7 +227,23 @@ async function signupAndVerify(
   return signupPayload.data.user;
 }
 
-describe("auth and role routes", () => {
+async function acceptFirstPendingInvitation(client: ReturnType<typeof makeClient>) {
+  const inbox = await client.request("/students/invitations");
+  expect(inbox.status).toBe(200);
+  const inboxPayload = (await inbox.json()) as {
+    data: Array<{ id: string; status: string; classroomId: string }>;
+  };
+  expect(inboxPayload.data.length).toBeGreaterThan(0);
+  const invitation = inboxPayload.data[0];
+  expect(invitation.status).toBe("PENDING");
+  const accepted = await client.request(`/students/invitations/${invitation.id}/accept`, {
+    method: "POST"
+  });
+  expect(accepted.status).toBe(200);
+  return invitation;
+}
+
+describe.sequential("auth and role routes", () => {
   it("updates account email and password, then requires new email verification", async () => {
     const server = await startTestServer();
     try {
@@ -721,14 +739,160 @@ describe("auth and role routes", () => {
       });
       expect(invite.status).toBe(201);
 
-      const afterInvite = await student.request("/classrooms");
-      expect(afterInvite.status).toBe(200);
-      expect(((await afterInvite.json()) as { data: unknown[] }).data).toHaveLength(1);
+      const duplicateInvite = await teacher.request(`/classrooms/${createdPayload.data.id}/students`, {
+        method: "POST",
+        body: JSON.stringify({
+          studentUserId: studentUser.id,
+          name: "Student Lee",
+          code: studentUser.inviteCode
+        })
+      });
+      expect(duplicateInvite.status).toBe(200);
+
+      const teacherInvitations = await teacher.request(
+        `/classrooms/${createdPayload.data.id}/invitations`
+      );
+      expect(teacherInvitations.status).toBe(200);
+      const teacherInvitationPayload = (await teacherInvitations.json()) as {
+        data: Array<{ status: string }>;
+      };
+      expect(teacherInvitationPayload.data).toHaveLength(1);
+      expect(teacherInvitationPayload.data[0].status).toBe("PENDING");
+
+      const afterPendingInvite = await student.request("/classrooms");
+      expect(afterPendingInvite.status).toBe(200);
+      expect(((await afterPendingInvite.json()) as { data: unknown[] }).data).toHaveLength(0);
+
+      const pendingWeeks = await student.request(`/classrooms/${createdPayload.data.id}/weeks`);
+      expect(pendingWeeks.status).toBe(403);
+
+      const pendingStudents = await teacher.request(`/classrooms/${createdPayload.data.id}/students`);
+      expect(pendingStudents.status).toBe(200);
+      expect(((await pendingStudents.json()) as { data: unknown[] }).data).toHaveLength(0);
+
+      await acceptFirstPendingInvitation(student);
+
+      const afterAccept = await student.request("/classrooms");
+      expect(afterAccept.status).toBe(200);
+      expect(((await afterAccept.json()) as { data: unknown[] }).data).toHaveLength(1);
+
+      const acceptedStudents = await teacher.request(`/classrooms/${createdPayload.data.id}/students`);
+      expect(acceptedStudents.status).toBe(200);
+      expect(((await acceptedStudents.json()) as { data: unknown[] }).data).toHaveLength(1);
+
+      const removeAccepted = await teacher.request(
+        `/classrooms/${createdPayload.data.id}/students/${studentUser.id}`,
+        { method: "DELETE" }
+      );
+      expect(removeAccepted.status).toBe(200);
+      const afterRemoveStudents = await teacher.request(`/classrooms/${createdPayload.data.id}/students`);
+      expect(afterRemoveStudents.status).toBe(200);
+      expect(((await afterRemoveStudents.json()) as { data: unknown[] }).data).toHaveLength(0);
+      const afterRemoveInvitations = await teacher.request(
+        `/classrooms/${createdPayload.data.id}/invitations`
+      );
+      expect(afterRemoveInvitations.status).toBe(200);
+      expect(((await afterRemoveInvitations.json()) as { data: unknown[] }).data).toHaveLength(0);
+      const afterRemoveClassrooms = await student.request("/classrooms");
+      expect(afterRemoveClassrooms.status).toBe(200);
+      expect(((await afterRemoveClassrooms.json()) as { data: unknown[] }).data).toHaveLength(0);
 
       const logout = await teacher.request("/auth/logout", { method: "POST" });
       expect(logout.status).toBe(200);
       const meAfterLogout = await teacher.request("/auth/me");
       expect(meAfterLogout.status).toBe(401);
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("prevents students from accepting invitations sent to another account", async () => {
+    const server = await startTestServer();
+    try {
+      const teacher = makeClient(server.baseUrl);
+      const studentA = makeClient(server.baseUrl);
+      const studentB = makeClient(server.baseUrl);
+      await signupAndVerify(teacher, {
+        email: "invite-owner-teacher@example.com",
+        displayName: "Invite Owner Teacher",
+        role: "teacher"
+      });
+      const studentUserA = await signupAndVerify(studentA, {
+        email: "invite-owner-a@example.com",
+        displayName: "Invite Owner A",
+        role: "student"
+      });
+      await signupAndVerify(studentB, {
+        email: "invite-owner-b@example.com",
+        displayName: "Invite Owner B",
+        role: "student"
+      });
+      const classroom = await teacher.request("/classrooms", {
+        method: "POST",
+        body: JSON.stringify({ title: "초대 소유권 강의실" })
+      });
+      const classroomPayload = (await classroom.json()) as { data: { id: string } };
+      const invite = await teacher.request(`/classrooms/${classroomPayload.data.id}/students`, {
+        method: "POST",
+        body: JSON.stringify({
+          studentUserId: studentUserA.id,
+          name: "Invite Owner A",
+          code: studentUserA.inviteCode
+        })
+      });
+      expect(invite.status).toBe(201);
+      const inbox = await studentA.request("/students/invitations");
+      const inboxPayload = (await inbox.json()) as { data: Array<{ id: string }> };
+      const forbiddenAccept = await studentB.request(
+        `/students/invitations/${inboxPayload.data[0].id}/accept`,
+        { method: "POST" }
+      );
+      expect(forbiddenAccept.status).toBe(403);
+
+      const cancelPending = await teacher.request(
+        `/classrooms/${classroomPayload.data.id}/students/${studentUserA.id}`,
+        { method: "DELETE" }
+      );
+      expect(cancelPending.status).toBe(200);
+      const inboxAfterCancel = await studentA.request("/students/invitations");
+      expect(inboxAfterCancel.status).toBe(200);
+      expect(((await inboxAfterCancel.json()) as { data: unknown[] }).data).toHaveLength(0);
+      const classroomsAfterCancel = await studentA.request("/classrooms");
+      expect(classroomsAfterCancel.status).toBe(200);
+      expect(((await classroomsAfterCancel.json()) as { data: unknown[] }).data).toHaveLength(0);
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("recovers legacy enrollments as accepted invitations on store init", async () => {
+    const server = await startTestServer();
+    try {
+      const teacher = makeClient(server.baseUrl);
+      const student = makeClient(server.baseUrl);
+      const teacherUser = await signupAndVerify(teacher, {
+        email: "legacy-invite-teacher@example.com",
+        displayName: "Legacy Invite Teacher",
+        role: "teacher"
+      });
+      const studentUser = await signupAndVerify(student, {
+        email: "legacy-invite-student@example.com",
+        displayName: "Legacy Invite Student",
+        role: "student"
+      });
+      const classroom = await teacher.request("/classrooms", {
+        method: "POST",
+        body: JSON.stringify({ title: "레거시 초대 복구 강의실" })
+      });
+      const classroomPayload = (await classroom.json()) as { data: { id: string } };
+      await server.store.enrollStudent(classroomPayload.data.id, studentUser.id, teacherUser.id);
+
+      const recoveredStore = new JsonStore({ dataDir: testDir, uploadDir });
+      await recoveredStore.init();
+      const invitations = await recoveredStore.listClassroomInvitations(classroomPayload.data.id);
+      expect(invitations).toHaveLength(1);
+      expect(invitations[0].studentUserId).toBe(studentUser.id);
+      expect(invitations[0].status).toBe("ACCEPTED");
     } finally {
       await server.close();
     }
@@ -765,6 +929,30 @@ describe("auth and role routes", () => {
         `/students/search?name=${encodeURIComponent("Search Target")}&code=${studentUser.inviteCode}&classroomId=${classroomPayload.data.id}`
       );
       expect(forbiddenSearch.status).toBe(403);
+
+      const forbiddenList = await teacherA.request(
+        `/classrooms/${classroomPayload.data.id}/invitations`
+      );
+      expect(forbiddenList.status).toBe(403);
+
+      const forbiddenInvite = await teacherA.request(
+        `/classrooms/${classroomPayload.data.id}/students`,
+        {
+          method: "POST",
+          body: JSON.stringify({
+            studentUserId: studentUser.id,
+            name: "Search Target",
+            code: studentUser.inviteCode
+          })
+        }
+      );
+      expect(forbiddenInvite.status).toBe(403);
+
+      const forbiddenRemove = await teacherA.request(
+        `/classrooms/${classroomPayload.data.id}/students/${studentUser.id}`,
+        { method: "DELETE" }
+      );
+      expect(forbiddenRemove.status).toBe(403);
     } finally {
       await server.close();
     }
@@ -869,6 +1057,45 @@ describe("auth and role routes", () => {
       expect(createdPayload.data.name).toBe("발표 논리력");
       expect(createdPayload.data.description).toBe("주장과 근거가 연결되는지 평가");
 
+      const duplicateCreate = await teacherA.request(
+        `/classrooms/${classroomA.data.id}/report/criteria`,
+        {
+          method: "POST",
+          body: JSON.stringify({
+            name: " 발표   논리력 ",
+            description: "같은 강의실의 중복 이름"
+          })
+        }
+      );
+      expect(duplicateCreate.status).toBe(409);
+      expect((await duplicateCreate.json()) as { error: string }).toMatchObject({
+        error: "이미 사용 중인 평가 항목 이름입니다."
+      });
+
+      const builtInDuplicateCreate = await teacherA.request(
+        `/classrooms/${classroomA.data.id}/report/criteria`,
+        {
+          method: "POST",
+          body: JSON.stringify({
+            name: "개념 이해도",
+            description: "기본 항목 이름과 중복"
+          })
+        }
+      );
+      expect(builtInDuplicateCreate.status).toBe(409);
+
+      const crossClassDuplicateCreate = await teacherB.request(
+        `/classrooms/${classroomB.data.id}/report/criteria`,
+        {
+          method: "POST",
+          body: JSON.stringify({
+            name: "발표 논리력",
+            description: "다른 강의실에서는 같은 커스텀 이름 허용"
+          })
+        }
+      );
+      expect(crossClassDuplicateCreate.status).toBe(201);
+
       const listA = await teacherA.request(`/classrooms/${classroomA.data.id}/report/criteria`);
       expect(listA.status).toBe(200);
       expect(((await listA.json()) as { data: unknown[] }).data).toHaveLength(1);
@@ -970,6 +1197,42 @@ describe("auth and role routes", () => {
       expect(updatedPayload.data.name).toBe("발표 구조화");
       expect(updatedPayload.data.description).toBe("주장, 근거, 예시가 순서대로 이어지는지 평가");
 
+      const secondCreated = await teacherA.request(
+        `/classrooms/${classroomA.data.id}/report/criteria`,
+        {
+          method: "POST",
+          body: JSON.stringify({
+            name: "학습 계획성",
+            description: "복습과 과제 흐름을 계획하는 정도"
+          })
+        }
+      );
+      expect(secondCreated.status).toBe(201);
+      const secondPayload = (await secondCreated.json()) as {
+        data: { id: string };
+      };
+
+      const duplicatePatch = await teacherA.request(
+        `/classrooms/${classroomA.data.id}/report/criteria/${secondPayload.data.id}`,
+        {
+          method: "PATCH",
+          body: JSON.stringify({ name: "발표 구조화" })
+        }
+      );
+      expect(duplicatePatch.status).toBe(409);
+      expect((await duplicatePatch.json()) as { error: string }).toMatchObject({
+        error: "이미 사용 중인 평가 항목 이름입니다."
+      });
+
+      const builtInDuplicatePatch = await teacherA.request(
+        `/classrooms/${classroomA.data.id}/report/criteria/${secondPayload.data.id}`,
+        {
+          method: "PATCH",
+          body: JSON.stringify({ name: "질문 구체성" })
+        }
+      );
+      expect(builtInDuplicatePatch.status).toBe(409);
+
       const missingDelete = await teacherA.request(
         `/classrooms/${classroomA.data.id}/report/criteria/crit_missing`,
         { method: "DELETE" }
@@ -982,10 +1245,644 @@ describe("auth and role routes", () => {
       );
       expect(deleted.status).toBe(200);
 
+      const secondDeleted = await teacherA.request(
+        `/classrooms/${classroomA.data.id}/report/criteria/${secondPayload.data.id}`,
+        { method: "DELETE" }
+      );
+      expect(secondDeleted.status).toBe(200);
+
       const listAfterDelete = await teacherA.request(
         `/classrooms/${classroomA.data.id}/report/criteria`
       );
       expect(((await listAfterDelete.json()) as { data: unknown[] }).data).toHaveLength(0);
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("protects classroom notices by role, visibility, and classroom ownership", async () => {
+    const server = await startTestServer();
+    try {
+      const teacherA = makeClient(server.baseUrl);
+      const teacherB = makeClient(server.baseUrl);
+      const student = makeClient(server.baseUrl);
+      const studentB = makeClient(server.baseUrl);
+      await signupAndVerify(teacherA, {
+        email: "notice-teacher-a@example.com",
+        displayName: "Notice Teacher A",
+        role: "teacher"
+      });
+      await signupAndVerify(teacherB, {
+        email: "notice-teacher-b@example.com",
+        displayName: "Notice Teacher B",
+        role: "teacher"
+      });
+      const studentUser = await signupAndVerify(student, {
+        email: "notice-student@example.com",
+        displayName: "Notice Student",
+        role: "student"
+      });
+      const studentBUser = await signupAndVerify(studentB, {
+        email: "notice-student-b@example.com",
+        displayName: "Notice Student B",
+        role: "student"
+      });
+
+      const classroomAResponse = await teacherA.request("/classrooms", {
+        method: "POST",
+        body: JSON.stringify({ title: "A 공지반" })
+      });
+      const classroomBResponse = await teacherB.request("/classrooms", {
+        method: "POST",
+        body: JSON.stringify({ title: "B 공지반" })
+      });
+      const classroomA = (await classroomAResponse.json()) as { data: { id: string } };
+      const classroomB = (await classroomBResponse.json()) as { data: { id: string } };
+
+      const invite = await teacherA.request(`/classrooms/${classroomA.data.id}/students`, {
+        method: "POST",
+        body: JSON.stringify({
+          studentUserId: studentUser.id,
+          name: "Notice Student",
+          code: studentUser.inviteCode
+        })
+      });
+      expect(invite.status).toBe(201);
+      await acceptFirstPendingInvitation(student);
+      const inviteStudentB = await teacherA.request(`/classrooms/${classroomA.data.id}/students`, {
+        method: "POST",
+        body: JSON.stringify({
+          studentUserId: studentBUser.id,
+          name: "Notice Student B",
+          code: studentBUser.inviteCode
+        })
+      });
+      expect(inviteStudentB.status).toBe(201);
+      await acceptFirstPendingInvitation(studentB);
+
+      const studentCreate = await student.request(`/classrooms/${classroomA.data.id}/notices`, {
+        method: "POST",
+        body: JSON.stringify({
+          title: "학생 생성 시도",
+          contentMarkdown: "학생은 공지를 만들 수 없습니다.",
+          status: "PUBLISHED"
+        })
+      });
+      expect(studentCreate.status).toBe(403);
+
+      const forbiddenCreate = await teacherB.request(`/classrooms/${classroomA.data.id}/notices`, {
+        method: "POST",
+        body: JSON.stringify({
+          title: "다른 선생님 생성 시도",
+          contentMarkdown: "소유하지 않은 강의실입니다.",
+          status: "PUBLISHED"
+        })
+      });
+      expect(forbiddenCreate.status).toBe(403);
+
+      const invalidEnum = await teacherA.request(`/classrooms/${classroomA.data.id}/notices`, {
+        method: "POST",
+        body: JSON.stringify({
+          title: "잘못된 공지",
+          contentMarkdown: "enum 검증",
+          category: "EVERYTHING",
+          priority: "NORMAL",
+          target: "CLASS",
+          status: "PUBLISHED"
+        })
+      });
+      expect(invalidEnum.status).toBe(400);
+
+      const invalidPublishAt = await teacherA.request(`/classrooms/${classroomA.data.id}/notices`, {
+        method: "POST",
+        body: JSON.stringify({
+          title: "잘못된 예약 시간",
+          contentMarkdown: "ISO datetime만 허용해야 합니다.",
+          category: "GENERAL",
+          priority: "NORMAL",
+          target: "CLASS",
+          status: "PUBLISHED",
+          publishAt: "May 25, 2026 09:00"
+        })
+      });
+      expect(invalidPublishAt.status).toBe(400);
+
+      const nonArrayAttachments = await teacherA.request(
+        `/classrooms/${classroomA.data.id}/notices`,
+        {
+          method: "POST",
+          body: JSON.stringify({
+            title: "첨부 검증",
+            contentMarkdown: "첨부 배열만 허용해야 합니다.",
+            category: "GENERAL",
+            priority: "NORMAL",
+            target: "CLASS",
+            status: "DRAFT",
+            attachments: { name: "bad.pdf", size: 1 }
+          })
+        }
+      );
+      expect(nonArrayAttachments.status).toBe(400);
+
+      const tooManyAttachments = await teacherA.request(
+        `/classrooms/${classroomA.data.id}/notices`,
+        {
+          method: "POST",
+          body: JSON.stringify({
+            title: "첨부 9개",
+            contentMarkdown: "첨부는 8개까지만 허용해야 합니다.",
+            category: "GENERAL",
+            priority: "NORMAL",
+            target: "CLASS",
+            status: "DRAFT",
+            attachments: Array.from({ length: 9 }, (_, index) => ({
+              name: `file-${index}.pdf`,
+              size: 1
+            }))
+          })
+        }
+      );
+      expect(tooManyAttachments.status).toBe(400);
+
+      const overlongAttachmentName = await teacherA.request(
+        `/classrooms/${classroomA.data.id}/notices`,
+        {
+          method: "POST",
+          body: JSON.stringify({
+            title: "첨부 이름 길이",
+            contentMarkdown: "첨부 이름 길이를 제한해야 합니다.",
+            category: "GENERAL",
+            priority: "NORMAL",
+            target: "CLASS",
+            status: "DRAFT",
+            attachments: [{ name: `${"x".repeat(121)}.pdf`, size: 1 }]
+          })
+        }
+      );
+      expect(overlongAttachmentName.status).toBe(400);
+
+      const negativeAttachmentSize = await teacherA.request(
+        `/classrooms/${classroomA.data.id}/notices`,
+        {
+          method: "POST",
+          body: JSON.stringify({
+            title: "첨부 크기",
+            contentMarkdown: "첨부 크기는 음수일 수 없습니다.",
+            category: "GENERAL",
+            priority: "NORMAL",
+            target: "CLASS",
+            status: "DRAFT",
+            attachments: [{ name: "bad-size.pdf", size: -1 }]
+          })
+        }
+      );
+      expect(negativeAttachmentSize.status).toBe(400);
+
+      const nonNumberAttachmentSize = await teacherA.request(
+        `/classrooms/${classroomA.data.id}/notices`,
+        {
+          method: "POST",
+          body: JSON.stringify({
+            title: "첨부 크기 타입",
+            contentMarkdown: "첨부 크기는 숫자여야 합니다.",
+            category: "GENERAL",
+            priority: "NORMAL",
+            target: "CLASS",
+            status: "DRAFT",
+            attachments: [{ name: "bad-size.pdf", size: "1KB" }]
+          })
+        }
+      );
+      expect(nonNumberAttachmentSize.status).toBe(400);
+
+      const draft = await teacherA.request(`/classrooms/${classroomA.data.id}/notices`, {
+        method: "POST",
+        body: JSON.stringify({
+          title: "초안 공지",
+          contentMarkdown: "학생에게 보이면 안 됩니다.",
+          category: "GENERAL",
+          priority: "NORMAL",
+          target: "CLASS",
+          status: "DRAFT",
+          pinned: false,
+          attachments: []
+        })
+      });
+      expect(draft.status).toBe(201);
+      const draftPayload = (await draft.json()) as { data: { id: string } };
+
+      const future = await teacherA.request(`/classrooms/${classroomA.data.id}/notices`, {
+        method: "POST",
+        body: JSON.stringify({
+          title: "예약 공지",
+          contentMarkdown: "아직 공개 전입니다.",
+          category: "GENERAL",
+          priority: "NORMAL",
+          target: "CLASS",
+          status: "PUBLISHED",
+          publishAt: "2999-01-01T00:00:00.000Z",
+          attachments: []
+        })
+      });
+      expect(future.status).toBe(201);
+      const futurePayload = (await future.json()) as { data: { id: string } };
+
+      const published = await teacherA.request(`/classrooms/${classroomA.data.id}/notices`, {
+        method: "POST",
+        body: JSON.stringify({
+          title: "기말고사 일정 및 범위 안내",
+          contentMarkdown: "시험 일정과 범위를 확인해 주세요.",
+          category: "EXAM",
+          priority: "IMPORTANT",
+          target: "CLASS",
+          status: "PUBLISHED",
+          pinned: true,
+          attachments: [{ name: "기말고사 범위.pdf", size: 1234, mimeType: "application/pdf" }]
+        })
+      });
+      expect(published.status).toBe(201);
+      const publishedPayload = (await published.json()) as {
+        data: { id: string; title: string; publishedAt?: string; commentCount: number };
+      };
+      expect(publishedPayload.data.publishedAt).toBeTruthy();
+      expect(publishedPayload.data.commentCount).toBe(0);
+
+      const teacherList = await teacherA.request(`/classrooms/${classroomA.data.id}/notices`);
+      expect(teacherList.status).toBe(200);
+      expect(((await teacherList.json()) as { data: unknown[] }).data).toHaveLength(3);
+
+      const studentList = await student.request(`/classrooms/${classroomA.data.id}/notices`);
+      expect(studentList.status).toBe(200);
+      const studentListPayload = (await studentList.json()) as { data: Array<{ id: string }> };
+      expect(studentListPayload.data.map((notice) => notice.id)).toEqual([publishedPayload.data.id]);
+
+      const studentDraft = await student.request(
+        `/classrooms/${classroomA.data.id}/notices/${draftPayload.data.id}`
+      );
+      expect(studentDraft.status).toBe(404);
+      const studentFuture = await student.request(
+        `/classrooms/${classroomA.data.id}/notices/${futurePayload.data.id}`
+      );
+      expect(studentFuture.status).toBe(404);
+      const futureComment = await student.request(
+        `/classrooms/${classroomA.data.id}/notices/${futurePayload.data.id}/comments`,
+        {
+          method: "POST",
+          body: JSON.stringify({ contentMarkdown: "예약 공지에는 댓글을 달 수 없어야 합니다." })
+        }
+      );
+      expect(futureComment.status).toBe(404);
+
+      const teacherDraftComment = await teacherA.request(
+        `/classrooms/${classroomA.data.id}/notices/${draftPayload.data.id}/comments`,
+        {
+          method: "POST",
+          body: JSON.stringify({ contentMarkdown: "교사는 초안 공지 댓글 관리 가능" })
+        }
+      );
+      expect(teacherDraftComment.status).toBe(201);
+      const teacherDraftCommentPayload = (await teacherDraftComment.json()) as {
+        data: { id: string };
+      };
+      const teacherDraftCommentPatch = await teacherA.request(
+        `/classrooms/${classroomA.data.id}/notices/${draftPayload.data.id}/comments/${teacherDraftCommentPayload.data.id}`,
+        {
+          method: "PATCH",
+          body: JSON.stringify({ contentMarkdown: "초안 공지 댓글 수정" })
+        }
+      );
+      expect(teacherDraftCommentPatch.status).toBe(200);
+      const teacherDraftCommentDelete = await teacherA.request(
+        `/classrooms/${classroomA.data.id}/notices/${draftPayload.data.id}/comments/${teacherDraftCommentPayload.data.id}`,
+        { method: "DELETE" }
+      );
+      expect(teacherDraftCommentDelete.status).toBe(200);
+
+      const studentPatch = await student.request(
+        `/classrooms/${classroomA.data.id}/notices/${publishedPayload.data.id}`,
+        {
+          method: "PATCH",
+          body: JSON.stringify({ title: "학생 수정 시도" })
+        }
+      );
+      expect(studentPatch.status).toBe(403);
+      const studentDelete = await student.request(
+        `/classrooms/${classroomA.data.id}/notices/${publishedPayload.data.id}`,
+        { method: "DELETE" }
+      );
+      expect(studentDelete.status).toBe(403);
+
+      const teacherBPatch = await teacherB.request(
+        `/classrooms/${classroomA.data.id}/notices/${publishedPayload.data.id}`,
+        {
+          method: "PATCH",
+          body: JSON.stringify({ title: "권한 없는 수정" })
+        }
+      );
+      expect(teacherBPatch.status).toBe(403);
+      const crossClassPatch = await teacherB.request(
+        `/classrooms/${classroomB.data.id}/notices/${publishedPayload.data.id}`,
+        {
+          method: "PATCH",
+          body: JSON.stringify({ title: "다른 반 수정" })
+        }
+      );
+      expect(crossClassPatch.status).toBe(404);
+
+      const emptyPatch = await teacherA.request(
+        `/classrooms/${classroomA.data.id}/notices/${publishedPayload.data.id}`,
+        {
+          method: "PATCH",
+          body: JSON.stringify({})
+        }
+      );
+      expect(emptyPatch.status).toBe(400);
+
+      const updated = await teacherA.request(
+        `/classrooms/${classroomA.data.id}/notices/${publishedPayload.data.id}`,
+        {
+          method: "PATCH",
+          body: JSON.stringify({ title: "기말고사 범위 최종 안내" })
+        }
+      );
+      expect(updated.status).toBe(200);
+      expect(((await updated.json()) as { data: { title: string } }).data.title).toBe(
+        "기말고사 범위 최종 안내"
+      );
+
+      const studentComment = await student.request(
+        `/classrooms/${classroomA.data.id}/notices/${publishedPayload.data.id}/comments`,
+        {
+          method: "POST",
+          body: JSON.stringify({ contentMarkdown: "확인했습니다." })
+        }
+      );
+      expect(studentComment.status).toBe(201);
+      const studentCommentPayload = (await studentComment.json()) as {
+        data: {
+          id: string;
+          authorRole: string;
+          canEdit: boolean;
+          canDelete: boolean;
+          createdAt: string;
+          updatedAt: string;
+          parentCommentId?: string;
+          authorUserId: string;
+          noticeId: string;
+        };
+      };
+      expect(studentCommentPayload.data.authorRole).toBe("student");
+      expect(studentCommentPayload.data.canEdit).toBe(true);
+      expect(studentCommentPayload.data.canDelete).toBe(true);
+
+      const teacherReply = await teacherA.request(
+        `/classrooms/${classroomA.data.id}/notices/${publishedPayload.data.id}/comments`,
+        {
+          method: "POST",
+          body: JSON.stringify({
+            contentMarkdown: "좋습니다.",
+            parentCommentId: studentCommentPayload.data.id
+          })
+        }
+      );
+      expect(teacherReply.status).toBe(201);
+      const teacherReplyPayload = (await teacherReply.json()) as {
+        data: { id: string; authorRole: string; canEdit: boolean; canDelete: boolean };
+      };
+      expect(teacherReplyPayload.data.authorRole).toBe("teacher");
+      expect(teacherReplyPayload.data.canEdit).toBe(true);
+      expect(teacherReplyPayload.data.canDelete).toBe(true);
+
+      const otherStudentComment = await studentB.request(
+        `/classrooms/${classroomA.data.id}/notices/${publishedPayload.data.id}/comments`,
+        {
+          method: "POST",
+          body: JSON.stringify({ contentMarkdown: "다른 학생 댓글입니다." })
+        }
+      );
+      expect(otherStudentComment.status).toBe(201);
+      const otherStudentCommentPayload = (await otherStudentComment.json()) as {
+        data: { id: string; canEdit: boolean; canDelete: boolean };
+      };
+      expect(otherStudentCommentPayload.data.canEdit).toBe(true);
+      expect(otherStudentCommentPayload.data.canDelete).toBe(true);
+
+      const studentComments = await student.request(
+        `/classrooms/${classroomA.data.id}/notices/${publishedPayload.data.id}/comments`
+      );
+      expect(studentComments.status).toBe(200);
+      const studentCommentsPayload = (await studentComments.json()) as {
+        data: Array<{
+          id: string;
+          authorUserId: string;
+          canEdit: boolean;
+          canDelete: boolean;
+        }>;
+      };
+      expect(studentCommentsPayload.data).toHaveLength(3);
+      expect(studentCommentsPayload.data.find((comment) => comment.id === studentCommentPayload.data.id))
+        .toMatchObject({ canEdit: true, canDelete: true });
+      expect(studentCommentsPayload.data.find((comment) => comment.id === teacherReplyPayload.data.id))
+        .toMatchObject({ canEdit: false, canDelete: false });
+      expect(studentCommentsPayload.data.find((comment) => comment.id === otherStudentCommentPayload.data.id))
+        .toMatchObject({ canEdit: false, canDelete: false });
+
+      const teacherComments = await teacherA.request(
+        `/classrooms/${classroomA.data.id}/notices/${publishedPayload.data.id}/comments`
+      );
+      expect(teacherComments.status).toBe(200);
+      const teacherCommentsPayload = (await teacherComments.json()) as {
+        data: Array<{ canEdit: boolean; canDelete: boolean }>;
+      };
+      expect(teacherCommentsPayload.data.every((comment) => comment.canEdit && comment.canDelete))
+        .toBe(true);
+
+      const patchedOwnComment = await student.request(
+        `/classrooms/${classroomA.data.id}/notices/${publishedPayload.data.id}/comments/${studentCommentPayload.data.id}`,
+        {
+          method: "PATCH",
+          body: JSON.stringify({
+            contentMarkdown: "확인했고 수정했습니다.",
+            parentCommentId: teacherReplyPayload.data.id
+          })
+        }
+      );
+      expect(patchedOwnComment.status).toBe(200);
+      const patchedOwnPayload = (await patchedOwnComment.json()) as {
+        data: {
+          contentMarkdown: string;
+          createdAt: string;
+          updatedAt: string;
+          parentCommentId?: string;
+          authorUserId: string;
+          noticeId: string;
+        };
+      };
+      expect(patchedOwnPayload.data.contentMarkdown).toBe("확인했고 수정했습니다.");
+      expect(patchedOwnPayload.data.createdAt).toBe(studentCommentPayload.data.createdAt);
+      expect(patchedOwnPayload.data.updatedAt).not.toBe(studentCommentPayload.data.updatedAt);
+      expect(patchedOwnPayload.data.parentCommentId).toBeUndefined();
+      expect(patchedOwnPayload.data.authorUserId).toBe(studentCommentPayload.data.authorUserId);
+      expect(patchedOwnPayload.data.noticeId).toBe(studentCommentPayload.data.noticeId);
+
+      const studentPatchTeacherReply = await student.request(
+        `/classrooms/${classroomA.data.id}/notices/${publishedPayload.data.id}/comments/${teacherReplyPayload.data.id}`,
+        {
+          method: "PATCH",
+          body: JSON.stringify({ contentMarkdown: "학생이 선생님 답글 수정" })
+        }
+      );
+      expect(studentPatchTeacherReply.status).toBe(403);
+      const studentDeleteTeacherReply = await student.request(
+        `/classrooms/${classroomA.data.id}/notices/${publishedPayload.data.id}/comments/${teacherReplyPayload.data.id}`,
+        { method: "DELETE" }
+      );
+      expect(studentDeleteTeacherReply.status).toBe(403);
+      const studentPatchOtherStudent = await student.request(
+        `/classrooms/${classroomA.data.id}/notices/${publishedPayload.data.id}/comments/${otherStudentCommentPayload.data.id}`,
+        {
+          method: "PATCH",
+          body: JSON.stringify({ contentMarkdown: "다른 학생 댓글 수정 시도" })
+        }
+      );
+      expect(studentPatchOtherStudent.status).toBe(403);
+      const studentDeleteOtherStudent = await student.request(
+        `/classrooms/${classroomA.data.id}/notices/${publishedPayload.data.id}/comments/${otherStudentCommentPayload.data.id}`,
+        { method: "DELETE" }
+      );
+      expect(studentDeleteOtherStudent.status).toBe(403);
+
+      const teacherPatchStudent = await teacherA.request(
+        `/classrooms/${classroomA.data.id}/notices/${publishedPayload.data.id}/comments/${studentCommentPayload.data.id}`,
+        {
+          method: "PATCH",
+          body: JSON.stringify({ contentMarkdown: "교사가 학생 댓글을 조정했습니다." })
+        }
+      );
+      expect(teacherPatchStudent.status).toBe(200);
+
+      const studentOwnDeleteTarget = await student.request(
+        `/classrooms/${classroomA.data.id}/notices/${publishedPayload.data.id}/comments`,
+        {
+          method: "POST",
+          body: JSON.stringify({ contentMarkdown: "학생이 직접 삭제할 댓글" })
+        }
+      );
+      expect(studentOwnDeleteTarget.status).toBe(201);
+      const studentOwnDeleteTargetPayload = (await studentOwnDeleteTarget.json()) as {
+        data: { id: string };
+      };
+      const studentOwnDelete = await student.request(
+        `/classrooms/${classroomA.data.id}/notices/${publishedPayload.data.id}/comments/${studentOwnDeleteTargetPayload.data.id}`,
+        { method: "DELETE" }
+      );
+      expect(studentOwnDelete.status).toBe(200);
+
+      const nestedReply = await student.request(
+        `/classrooms/${classroomA.data.id}/notices/${publishedPayload.data.id}/comments`,
+        {
+          method: "POST",
+          body: JSON.stringify({
+            contentMarkdown: "답글의 답글은 막혀야 합니다.",
+            parentCommentId: teacherReplyPayload.data.id
+          })
+        }
+      );
+      expect(nestedReply.status).toBe(400);
+
+      const invalidReply = await student.request(
+        `/classrooms/${classroomA.data.id}/notices/${publishedPayload.data.id}/comments`,
+        {
+          method: "POST",
+          body: JSON.stringify({
+            contentMarkdown: "없는 댓글 답글",
+            parentCommentId: "ntcc_missing"
+          })
+        }
+      );
+      expect(invalidReply.status).toBe(400);
+
+      const cascadeParent = await student.request(
+        `/classrooms/${classroomA.data.id}/notices/${publishedPayload.data.id}/comments`,
+        {
+          method: "POST",
+          body: JSON.stringify({ contentMarkdown: "삭제 cascade 부모" })
+        }
+      );
+      expect(cascadeParent.status).toBe(201);
+      const cascadeParentPayload = (await cascadeParent.json()) as { data: { id: string } };
+      const cascadeChild = await teacherA.request(
+        `/classrooms/${classroomA.data.id}/notices/${publishedPayload.data.id}/comments`,
+        {
+          method: "POST",
+          body: JSON.stringify({
+            contentMarkdown: "삭제 cascade 자식",
+            parentCommentId: cascadeParentPayload.data.id
+          })
+        }
+      );
+      expect(cascadeChild.status).toBe(201);
+      const cascadeChildPayload = (await cascadeChild.json()) as { data: { id: string } };
+      const deleteCascadeParent = await teacherA.request(
+        `/classrooms/${classroomA.data.id}/notices/${publishedPayload.data.id}/comments/${cascadeParentPayload.data.id}`,
+        { method: "DELETE" }
+      );
+      expect(deleteCascadeParent.status).toBe(200);
+
+      const comments = await student.request(
+        `/classrooms/${classroomA.data.id}/notices/${publishedPayload.data.id}/comments`
+      );
+      expect(comments.status).toBe(200);
+      const commentsPayload = (await comments.json()) as { data: Array<{ id: string }> };
+      expect(commentsPayload.data.map((comment) => comment.id)).not.toContain(
+        cascadeParentPayload.data.id
+      );
+      expect(commentsPayload.data.map((comment) => comment.id)).not.toContain(
+        cascadeChildPayload.data.id
+      );
+
+      const deleted = await teacherA.request(
+        `/classrooms/${classroomA.data.id}/notices/${publishedPayload.data.id}`,
+        { method: "DELETE" }
+      );
+      expect(deleted.status).toBe(200);
+      const commentsAfterDelete = await teacherA.request(
+        `/classrooms/${classroomA.data.id}/notices/${publishedPayload.data.id}/comments`
+      );
+      expect(commentsAfterDelete.status).toBe(404);
+
+      const cascadeNotice = await teacherA.request(`/classrooms/${classroomA.data.id}/notices`, {
+        method: "POST",
+        body: JSON.stringify({
+          title: "강의실 삭제 cascade 공지",
+          contentMarkdown: "강의실 삭제 시 같이 없어져야 합니다.",
+          category: "GENERAL",
+          priority: "NORMAL",
+          target: "CLASS",
+          status: "PUBLISHED"
+        })
+      });
+      expect(cascadeNotice.status).toBe(201);
+      const cascadePayload = (await cascadeNotice.json()) as { data: { id: string } };
+      const cascadeComment = await student.request(
+        `/classrooms/${classroomA.data.id}/notices/${cascadePayload.data.id}/comments`,
+        {
+          method: "POST",
+          body: JSON.stringify({ contentMarkdown: "cascade 댓글" })
+        }
+      );
+      expect(cascadeComment.status).toBe(201);
+
+      const deleteClassroom = await teacherA.request(`/classrooms/${classroomA.data.id}`, {
+        method: "DELETE"
+      });
+      expect(deleteClassroom.status).toBe(200);
+      expect(
+        await server.store.listClassroomNotices(classroomA.data.id, { includeHidden: true })
+      ).toHaveLength(0);
+      expect(
+        await server.store.listClassroomNoticeComments(classroomA.data.id, cascadePayload.data.id)
+      ).toHaveLength(0);
     } finally {
       await server.close();
     }
@@ -1045,6 +1942,7 @@ describe("auth and role routes", () => {
           code: studentUser.inviteCode
         })
       });
+      await acceptFirstPendingInvitation(student);
 
       const byLecture = await student.request(`/session/by-lecture/${lecture.id}`);
       expect(byLecture.status).toBe(200);

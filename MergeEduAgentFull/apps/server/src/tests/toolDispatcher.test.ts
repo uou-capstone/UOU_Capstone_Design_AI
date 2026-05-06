@@ -341,6 +341,104 @@ describe("ToolDispatcher soft failure", () => {
 
     expect(state.pageStates.some((page) => page.page === 999)).toBe(false);
     expect(state.pageStates.find((page) => page.page === 1)?.status).toBe("EXPLAINED");
+    expect(state.learningProgressPage).toBe(1);
+  });
+
+  it("advances learning progress only after sequential successful explanations", async () => {
+    const bridge = {
+      explainPageStream: async (input: { page: number }) => ({
+        markdown: `${input.page}페이지 설명`,
+        thoughtSummary: ""
+      }),
+      answerQuestionStream: async () => ({ markdown: "답변", thoughtSummary: "" }),
+      generateQuizStream: async () => {
+        throw new Error("not used");
+      },
+      gradeQuizStream: async () => {
+        throw new Error("not used");
+      }
+    } as any;
+    const dispatcher = new ToolDispatcher(
+      new ExplainerAgent(bridge),
+      new QaAgent(bridge),
+      new QuizAgents(bridge),
+      new GraderAgent(bridge),
+      new MisconceptionRepairAgent(bridge)
+    );
+    const state = makeState();
+    const baseContext = makeDispatchContext();
+    const context = {
+      ...baseContext,
+      lecture: {
+        ...baseContext.lecture,
+        pdf: {
+          ...baseContext.lecture.pdf,
+          numPages: 3
+        }
+      }
+    };
+
+    await dispatcher.dispatch(
+      state,
+      [{ type: "CALL_TOOL", tool: "EXPLAIN_PAGE", args: { page: 1 } }],
+      context
+    );
+    expect(state.learningProgressPage).toBe(1);
+
+    await dispatcher.dispatch(
+      state,
+      [{ type: "CALL_TOOL", tool: "EXPLAIN_PAGE", args: { page: 3 } }],
+      context
+    );
+    expect(state.learningProgressPage).toBe(1);
+
+    await dispatcher.dispatch(
+      state,
+      [{ type: "CALL_TOOL", tool: "EXPLAIN_PAGE", args: { page: 2 } }],
+      context
+    );
+    expect(state.learningProgressPage).toBe(2);
+
+    await dispatcher.dispatch(
+      state,
+      [{ type: "CALL_TOOL", tool: "EXPLAIN_PAGE", args: { page: 1 } }],
+      context
+    );
+    expect(state.learningProgressPage).toBe(2);
+  });
+
+  it("does not advance learning progress when explanation fails", async () => {
+    const bridge = {
+      explainPageStream: async () => {
+        throw new Error("bridge timeout");
+      },
+      answerQuestionStream: async () => ({ markdown: "답변", thoughtSummary: "" }),
+      generateQuizStream: async () => {
+        throw new Error("not used");
+      },
+      gradeQuizStream: async () => {
+        throw new Error("not used");
+      }
+    } as any;
+    const dispatcher = new ToolDispatcher(
+      new ExplainerAgent(bridge),
+      new QaAgent(bridge),
+      new QuizAgents(bridge),
+      new GraderAgent(bridge),
+      new MisconceptionRepairAgent(bridge)
+    );
+    const state = makeState();
+    state.learningProgressPage = 0;
+
+    const result = await dispatcher.dispatch(
+      state,
+      [{ type: "CALL_TOOL", tool: "EXPLAIN_PAGE", args: { page: 1 } }],
+      makeDispatchContext()
+    );
+
+    expect(state.learningProgressPage).toBe(0);
+    expect(result.newMessages.find((message) => message.agent === "SYSTEM")?.contentMarkdown)
+      .toContain("EXPLAIN_PAGE");
   });
 
   it("does not stream raw quiz JSON as chat answer text while generating a quiz", async () => {
@@ -660,6 +758,8 @@ describe("ToolDispatcher soft failure", () => {
     );
 
     const state = makeState();
+    state.currentPage = 5;
+    state.learningProgressPage = 1;
     state.activeIntervention = {
       mode: "QUIZ_REPAIR",
       page: 1,
@@ -691,6 +791,7 @@ describe("ToolDispatcher soft failure", () => {
 
     expect(state.activeIntervention?.stage).toBe("REPAIR_DELIVERED");
     expect(state.pageStates[0]?.status).toBe("REVIEW_DONE");
+    expect(state.feedback.at(-1)?.progressText).toBe("~1페이지까지 진행");
     expect(state.integratedMemory.misconceptions.join(" ")).toContain("적용");
     expect(
       result.newMessages.some(
@@ -939,6 +1040,7 @@ describe("ToolDispatcher soft failure", () => {
       new MisconceptionRepairAgent(bridge)
     );
     const state = makeState();
+    state.learningProgressPage = 0;
 
     const result = await dispatcher.dispatch(
       state,
@@ -949,6 +1051,7 @@ describe("ToolDispatcher soft failure", () => {
     expect(result.newMessages[0]?.agent).toBe("SYSTEM");
     expect(result.newMessages[0]?.contentMarkdown).toContain("Gemini PDF 파일 연결");
     expect(state.pageStates.find((page) => page.page === 1)?.status).toBe("EXPLAINING");
+    expect(state.learningProgressPage).toBe(0);
   });
 
   it("runs local-only feedback writes without Gemini file", async () => {
@@ -982,6 +1085,7 @@ describe("ToolDispatcher soft failure", () => {
     );
 
     expect(state.feedback[0]?.notesMarkdown).toContain("퀴즈 선택 대기");
+    expect(state.feedback[0]?.progressText).toBe("~0페이지까지 진행");
     expect(result.newMessages.some((message) => message.agent === "SYSTEM")).toBe(false);
   });
 

@@ -196,24 +196,6 @@ run.cmd
 - 웹 클라이언트는 `/api/crypto/request-key`에서 RSA-OAEP 공개키를 받고, 인증 요청 본문을 AES-256-GCM으로 암호화해 전송한다.
 - 운영 모드에서는 `REQUEST_ENCRYPTION_MODE=off`와 `optional`이 차단된다.
 
-## 임시 테스트 계정
-
-테스트 계정 목록은 `docs/temp-member-accounts.md`에 있다.
-
-새 로컬 환경에서는 실제 사용자 JSON이 커밋되지 않으므로 아래 명령으로 계정을 시드한다.
-
-```bash
-npm run seed:temp-accounts -w apps/server
-```
-
-Windows:
-
-```cmd
-npm run seed:temp-accounts -w apps/server
-```
-
-공통 비밀번호는 문서에 적힌 로컬 테스트용 값이다. 배포/공유 환경에서는 이 계정을 삭제하거나 별도 테스트 데이터로 분리한다.
-
 ## 핵심 기능
 
 - 이메일/비밀번호 회원가입, 가입 시 이메일 인증, 아이디/비밀번호 로그인
@@ -235,7 +217,6 @@ npm run seed:temp-accounts -w apps/server
 - `STUDENT_COMPETENCY_AGENT.md`: 학생별/강의실별 역량 리포트 구조
 - `docs/README.md`: docs 디렉토리 문서 색인
 - `apps/ai-bridge/README.md`: Gemini bridge 역할과 엔드포인트
-- `docs/temp-member-accounts.md`: 임시 선생님/학생 계정과 시드 명령
 - `docs/multi-agent-diagrams/README.md`: 멀티 에이전트 다이어그램 안내
 - `update/0427update/safety-scenarios-50.md`: 0427 수동 안전성/권한/UI 테스트 로그
 

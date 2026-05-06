@@ -6,6 +6,7 @@ import {
   LectureItem,
   QuizJson,
   QuizType,
+  ReportCriteriaAssistantProposal,
   TeacherExamGrading,
   TeacherExamRevision
 } from "../../types/domain.js";
@@ -497,6 +498,65 @@ export class GeminiBridgeClient {
     }
     return {
       proposal: streamed.data,
+      thoughtSummary: streamed.thoughtSummary
+    };
+  }
+
+  async reportCriteriaAssistantChatStream(
+    input: {
+      model: string;
+      message: string;
+      history: unknown[];
+      currentProposal: unknown;
+      builtInCriteria: unknown[];
+      customCriteria: unknown[];
+      responseJsonSchema: Record<string, unknown>;
+    },
+    onDelta?: (delta: { channel: StreamChannel; text: string }) => void,
+    signal?: AbortSignal
+  ): Promise<{ proposal: ReportCriteriaAssistantProposal; thoughtSummary: string }> {
+    const streamed = await this.streamBridge<ReportCriteriaAssistantProposal>(
+      "report_criteria_assistant_chat_stream",
+      "/bridge/report_criteria_assistant_chat_stream",
+      input,
+      onDelta,
+      appConfig.reportCriteriaAssistantAiTimeoutMs,
+      signal
+    );
+    if (!streamed.data) {
+      this.throwClientError(
+        "report_criteria_assistant_chat_stream",
+        502,
+        "AI bridge did not return report criteria assistant JSON",
+        "bridge"
+      );
+    }
+    return {
+      proposal: streamed.data,
+      thoughtSummary: streamed.thoughtSummary
+    };
+  }
+
+  async discussionAssistantChatStream(
+    input: {
+      model: string;
+      prompt: string;
+      draft: unknown;
+      history: unknown[];
+    },
+    onDelta?: (delta: { channel: StreamChannel; text: string }) => void,
+    signal?: AbortSignal
+  ): Promise<{ markdown: string; thoughtSummary: string }> {
+    const streamed = await this.streamBridge(
+      "discussion_assistant_chat_stream",
+      "/bridge/discussion_assistant_chat_stream",
+      input,
+      onDelta,
+      appConfig.discussionAssistantAiTimeoutMs,
+      signal
+    );
+    return {
+      markdown: streamed.answerText || contentToMarkdown(streamed.content),
       thoughtSummary: streamed.thoughtSummary
     };
   }

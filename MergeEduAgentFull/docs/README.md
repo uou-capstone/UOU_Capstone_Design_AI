@@ -4,7 +4,6 @@
 
 | 문서 | 내용 |
 |---|---|
-| `temp-member-accounts.md` | 임시 선생님/학생 계정, 초대 코드, 시드 명령 |
 | `multi-agent-diagrams/README.md` | 학습 멀티 에이전트 다이어그램 설명 |
 | `quiz-modal-footer-fix-design.md` | 퀴즈 모달 채점 버튼 배치 수정 설계 |
 | `quiz-grading-feedback-redesign-plan.md` | 퀴즈 채점 결과 UI 개선 계획 |

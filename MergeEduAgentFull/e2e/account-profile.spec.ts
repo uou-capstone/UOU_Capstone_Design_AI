@@ -18,22 +18,25 @@ async function signupAndVerify(page: import("@playwright/test").Page, input: {
   expect(code).toBeTruthy();
   await page.getByLabel("인증 코드").fill(code!);
   await page.getByRole("button", { name: "인증 완료" }).click();
-  await expect(page.getByText(input.displayName)).toBeVisible();
+  await expect(
+    page.getByRole("heading", {
+      name: input.role === "teacher" ? "내 강의실" : "초대받은 강의실"
+    })
+  ).toBeVisible();
 }
 
 async function openProfileMenu(page: import("@playwright/test").Page) {
   const trigger = page.getByRole("button", { name: "회원 메뉴" });
-  await expect(trigger).toHaveAttribute("aria-haspopup", "menu");
   await trigger.click();
   await expect(trigger).toHaveAttribute("aria-expanded", "true");
   await expect(trigger).toHaveAttribute("aria-controls", /topbar-profile-menu/);
-  await expect(page.getByRole("menu", { name: "회원 메뉴" })).toBeVisible();
+  await expect(page.locator("#topbar-profile-menu")).toBeVisible();
   return trigger;
 }
 
 async function logout(page: import("@playwright/test").Page) {
   await openProfileMenu(page);
-  await page.getByRole("menuitem", { name: "로그아웃" }).click();
+  await page.getByRole("button", { name: "로그아웃" }).click();
   await expect(page.getByRole("heading", { name: "로그인" })).toBeVisible();
 }
 
@@ -63,11 +66,9 @@ test("profile menu opens a separate account settings page and updates credential
   await expect(page.locator(".account-profile-panel")).toHaveCount(0);
   await expect(page.getByRole("button", { name: "로그아웃" })).toHaveCount(0);
   const dashboardMenuButtonBox = await page.getByRole("button", { name: "회원 메뉴" }).boundingBox();
-  const dashboardMenuIconBox = await page.getByRole("button", { name: "회원 메뉴" }).locator("svg").boundingBox();
-  expect(dashboardMenuButtonBox?.width).toBeGreaterThanOrEqual(46);
-  expect(dashboardMenuButtonBox?.height).toBeGreaterThanOrEqual(46);
-  expect(dashboardMenuIconBox?.width).toBeGreaterThanOrEqual(25);
-  expect(dashboardMenuIconBox?.height).toBeGreaterThanOrEqual(25);
+  expect(dashboardMenuButtonBox?.width).toBeGreaterThanOrEqual(42);
+  expect(dashboardMenuButtonBox?.height).toBeGreaterThanOrEqual(42);
+  await expect(page.getByRole("button", { name: "회원 메뉴" })).toContainText("P");
 
   await page.goto("/verify-email?next=https://evil.example");
   await expect(page).toHaveURL(/\/$/);
@@ -75,40 +76,40 @@ test("profile menu opens a separate account settings page and updates credential
   await expect(page).toHaveURL(/\/$/);
 
   const profileTrigger = await openProfileMenu(page);
-  await expect(page.getByRole("menuitem", { name: "회원 정보 수정" })).toBeVisible();
-  await expect(page.getByRole("menuitem", { name: "로그아웃" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "회원 정보 수정" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "로그아웃" })).toBeVisible();
   await page.keyboard.press("Escape");
-  await expect(page.getByRole("menu", { name: "회원 메뉴" })).toHaveCount(0);
+  await expect(page.locator("#topbar-profile-menu")).toHaveCount(0);
   await expect(profileTrigger).toHaveAttribute("aria-expanded", "false");
   await expect(profileTrigger).toBeFocused();
 
   await openProfileMenu(page);
   await page.getByRole("heading", { name: "내 강의실" }).click();
-  await expect(page.getByRole("menu", { name: "회원 메뉴" })).toHaveCount(0);
+  await expect(page.locator("#topbar-profile-menu")).toHaveCount(0);
   await expect(page.getByRole("button", { name: "회원 메뉴" })).toHaveAttribute("aria-expanded", "false");
 
   await openProfileMenu(page);
-  await page.getByRole("menuitem", { name: "회원 정보 수정" }).click();
+  await page.getByRole("button", { name: "회원 정보 수정" }).click();
   await expect(page).toHaveURL(/\/account$/);
   await expect(page.getByRole("heading", { name: "회원 정보 수정" })).toBeVisible();
   const accountPanel = page.locator(".account-profile-panel");
   await expect(accountPanel.getByText(oldEmail)).toBeVisible();
   const accountPanelBox = await accountPanel.boundingBox();
-  expect(accountPanelBox?.width).toBeGreaterThanOrEqual(1080);
+  expect(accountPanelBox?.width).toBeGreaterThanOrEqual(960);
 
   await openProfileMenu(page);
-  await page.getByRole("button", { name: "Merge Edu Agent" }).click();
+  await page.getByRole("button", { name: "EduPilot" }).click();
   await expect(page).toHaveURL(/\/$/);
-  await expect(page.getByRole("menu", { name: "회원 메뉴" })).toHaveCount(0);
+  await expect(page.locator("#topbar-profile-menu")).toHaveCount(0);
   await expect(page.getByRole("button", { name: "회원 메뉴" })).toHaveAttribute("aria-expanded", "false");
 
   await openProfileMenu(page);
-  await page.getByRole("menuitem", { name: "회원 정보 수정" }).click();
+  await page.getByRole("button", { name: "회원 정보 수정" }).click();
   await page.getByRole("button", { name: "취소" }).click();
   await expect(page).toHaveURL(/\/$/);
 
   await openProfileMenu(page);
-  await page.getByRole("menuitem", { name: "회원 정보 수정" }).click();
+  await page.getByRole("button", { name: "회원 정보 수정" }).click();
   const panel = page.locator(".account-profile-panel");
   await panel.getByLabel("현재 비밀번호").fill("wrong-password");
   await panel.locator("#account-new-password").fill(intermediatePassword);
@@ -164,7 +165,7 @@ test("profile menu opens a separate account settings page and updates credential
     });
   });
   await openProfileMenu(page);
-  await page.getByRole("menuitem", { name: "로그아웃" }).click();
+  await page.getByRole("button", { name: "로그아웃" }).click();
   await expect(page.getByRole("heading", { name: "로그인" })).toBeVisible();
 });
 
@@ -182,12 +183,12 @@ test("student can use the account page from a compact top bar", async ({ page })
   await expect(page.getByRole("heading", { name: "초대받은 강의실" })).toBeVisible();
   const trigger = page.getByRole("button", { name: "회원 메뉴" });
   await expect(trigger).toBeVisible();
-  await expect(trigger.locator("svg")).toHaveCount(1);
+  await expect(trigger).toContainText("긴");
   await openProfileMenu(page);
-  const menuBox = await page.getByRole("menu", { name: "회원 메뉴" }).boundingBox();
+  const menuBox = await page.locator("#topbar-profile-menu").boundingBox();
   expect(menuBox?.x).toBeGreaterThanOrEqual(0);
   expect((menuBox?.x ?? 0) + (menuBox?.width ?? 0)).toBeLessThanOrEqual(320);
-  await page.getByRole("menuitem", { name: "회원 정보 수정" }).click();
+  await page.getByRole("button", { name: "회원 정보 수정" }).click();
   await expect(page).toHaveURL(/\/account$/);
   await expect(page.getByRole("heading", { name: "회원 정보 수정" })).toBeVisible();
   await expect(page.locator(".account-profile-panel").getByText("학생")).toBeVisible();

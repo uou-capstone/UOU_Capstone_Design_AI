@@ -7,10 +7,15 @@ import {
   TeacherExamAttempt,
   TeacherExamGrading,
   TeacherExamQuestion,
+  TeacherExamReportQuestionDistribution,
+  TeacherExamReportQuestionRespondent,
+  TeacherExamReportQuestionStat,
+  TeacherExamReportScore,
+  TeacherExamReportStudentStatus,
   TeacherExamRevision,
   User
 } from "../../types/domain.js";
-import { JsonStore } from "../storage/JsonStore.js";
+import { JsonStore, TeacherExamMutationBlockedError } from "../storage/JsonStore.js";
 import { ExamClock } from "./ExamClock.js";
 import { ExamLogger } from "./ExamLogger.js";
 import { TeacherExamGradingService } from "./TeacherExamGradingService.js";
@@ -34,6 +39,13 @@ export interface TeacherExamDraftInput {
   passScoreRatio?: unknown;
   aiGradingEnabled?: unknown;
   questions?: unknown;
+}
+
+export interface TeacherExamSettingsInput {
+  title?: unknown;
+  availableFrom?: unknown;
+  availableUntil?: unknown;
+  timeLimitMinutes?: unknown;
 }
 
 interface ExamStudioProposalContext {
@@ -99,6 +111,20 @@ function asStrictZonedIso(value: unknown): string | undefined {
   return isSameWallClock ? new Date(time).toISOString() : undefined;
 }
 
+function normalizeSettingsIso(value: unknown): string | undefined {
+  const strictIso = asStrictZonedIso(value);
+  if (strictIso) return strictIso;
+  return undefined;
+}
+
+function hasOwn(value: object, key: string): boolean {
+  return Object.prototype.hasOwnProperty.call(value, key);
+}
+
+function isStrictScheduleIsoInput(value: unknown): boolean {
+  return Boolean(asStrictZonedIso(value));
+}
+
 function addDays(days: number): string {
   return new Date(Date.now() + days * 24 * 60 * 60 * 1000).toISOString();
 }
@@ -124,6 +150,272 @@ function stripSensitiveQuestions(questions: TeacherExamQuestion[], includeExplan
     choices: question.type === "MCQ" ? question.choices ?? [] : undefined,
     ...(includeExplanations ? { explanationMarkdown: question.explanationMarkdown } : {})
   }));
+}
+
+function roundTenth(value: number): number {
+  return Math.round(value * 10) / 10;
+}
+
+function normalizeReportText(value: unknown): string {
+  return String(value ?? "").trim().replace(/\s+/g, " ");
+}
+
+function reportSignatureHash(value: string): string {
+  let hash = 5381;
+  for (let index = 0; index < value.length; index += 1) {
+    hash = ((hash << 5) + hash + value.charCodeAt(index)) >>> 0;
+  }
+  return hash.toString(36);
+}
+
+function parseReportBoolean(value: unknown): boolean | null {
+  if (typeof value === "boolean") return value;
+  if (typeof value === "string") {
+    const normalized = value.trim().toLowerCase();
+    if (["true", "o", "yes", "y", "1", "맞음", "참"].includes(normalized)) return true;
+    if (["false", "x", "no", "n", "0", "틀림", "거짓"].includes(normalized)) return false;
+  }
+  return null;
+}
+
+function shortAnswerCanonicalText(question: TeacherExamQuestion): string {
+  return normalizeReportText(question.modelAnswerMarkdown) || normalizeReportText(question.referenceAnswer?.text);
+}
+
+function hasShortAnswerAid(question: TeacherExamQuestion): boolean {
+  return Boolean(shortAnswerCanonicalText(question) || normalizeReportText(question.rubricMarkdown));
+}
+
+function reportQuestionSignature(question: TeacherExamQuestion): string {
+  if (question.type === "MCQ") {
+    const choiceIds = (question.choices ?? []).map((choice) => choice.id).sort().join(",");
+    return `MCQ|${question.points}|${choiceIds}|${question.answer?.choiceId ?? ""}`;
+  }
+  if (question.type === "OX") {
+    return `OX|${question.points}|${String(question.answer?.value ?? "")}`;
+  }
+  if (question.type === "SHORT") {
+    return [
+      "SHORT",
+      question.points,
+      shortAnswerCanonicalText(question).toLocaleLowerCase("ko-KR"),
+      normalizeReportText(question.rubricMarkdown).toLocaleLowerCase("ko-KR")
+    ].join("|");
+  }
+  return [
+    "ESSAY",
+    question.points,
+    normalizeReportText(question.rubricMarkdown).toLocaleLowerCase("ko-KR"),
+    normalizeReportText(question.modelAnswerMarkdown).toLocaleLowerCase("ko-KR")
+  ].join("|");
+}
+
+function reportCorrectAnswerLabel(question: TeacherExamQuestion): string | undefined {
+  if (question.type === "MCQ") {
+    const choice = (question.choices ?? []).find((item) => item.id === question.answer?.choiceId);
+    return choice?.textMarkdown ?? question.answer?.choiceId;
+  }
+  if (question.type === "OX") {
+    return typeof question.answer?.value === "boolean" ? (question.answer.value ? "O" : "X") : undefined;
+  }
+  if (question.type === "SHORT") {
+    return shortAnswerCanonicalText(question) || undefined;
+  }
+  return undefined;
+}
+
+function normalizeReportAnswer(question: TeacherExamQuestion, rawAnswer: unknown) {
+  if (question.type === "MCQ") {
+    const record = rawAnswer && typeof rawAnswer === "object" ? (rawAnswer as Record<string, unknown>) : null;
+    const choiceId = normalizeReportText(record?.choiceId ?? rawAnswer);
+    if (!choiceId) return { hasAnswer: false, key: "__unanswered__", label: "미응답" };
+    const choice = (question.choices ?? []).find((item) => item.id === choiceId);
+    return {
+      hasAnswer: true,
+      key: choiceId,
+      label: choice?.textMarkdown ?? choiceId
+    };
+  }
+  if (question.type === "OX") {
+    const record = rawAnswer && typeof rawAnswer === "object" ? (rawAnswer as Record<string, unknown>) : null;
+    const parsed = parseReportBoolean(record && "value" in record ? record.value : rawAnswer);
+    if (parsed === null) return { hasAnswer: false, key: "__unanswered__", label: "미응답" };
+    return {
+      hasAnswer: true,
+      key: String(parsed),
+      label: parsed ? "O" : "X"
+    };
+  }
+  const normalized = normalizeReportText(rawAnswer);
+  if (!normalized) return { hasAnswer: false, key: "__unanswered__", label: "미응답" };
+  return {
+    hasAnswer: true,
+    key: normalized.toLocaleLowerCase("ko-KR"),
+    label: normalized
+  };
+}
+
+function isDistributionCorrect(question: TeacherExamQuestion, key: string): boolean | undefined {
+  if (question.type === "MCQ") return key === question.answer?.choiceId;
+  if (question.type === "OX") return key === String(question.answer?.value ?? "");
+  if (question.type === "SHORT") {
+    const canonical = shortAnswerCanonicalText(question).toLocaleLowerCase("ko-KR");
+    return Boolean(canonical) && key === canonical;
+  }
+  return undefined;
+}
+
+function isWrittenQuestion(question: TeacherExamQuestion): boolean {
+  return question.type === "SHORT" || question.type === "ESSAY";
+}
+
+function revisionScoredMaxScore(revision: TeacherExamRevision | undefined): number {
+  return (
+    revision?.questions.reduce(
+      (sum, question) => sum + (!revision.aiGradingEnabled && isWrittenQuestion(question) ? 0 : question.points),
+      0
+    ) ?? 0
+  );
+}
+
+function reportScoreForAttempt(attempt: TeacherExamAttempt): TeacherExamReportScore | undefined {
+  if (attempt.status !== "GRADED" || !attempt.grading) return undefined;
+  const maxScore = attempt.grading.maxScore;
+  const score = roundTenth(attempt.grading.totalScore);
+  return {
+    score,
+    maxScore,
+    scoreRatio: maxScore > 0 ? score / maxScore : 0
+  };
+}
+
+function gradingQuestionCounts(revision: TeacherExamRevision) {
+  return {
+    systemQuestionCount: revision.questions.filter((question) => question.type === "MCQ" || question.type === "OX").length,
+    writtenQuestionCount: revision.questions.filter(isWrittenQuestion).length
+  };
+}
+
+interface ReportQuestionAccumulator {
+  statId: string;
+  question: TeacherExamQuestion;
+  questionNumber?: number;
+  isArchivedQuestion?: boolean;
+  versionLabel?: string;
+  attempts: number;
+  scoreTotal: number;
+  correctCount: number;
+  incorrectCount: number;
+  partialCount: number;
+  unansweredCount: number;
+  unsupportedReason?: string;
+  distribution: Map<string, { key: string; label: string; count: number; isCorrect?: boolean }>;
+  respondents: TeacherExamReportQuestionRespondent[];
+}
+
+function makeQuestionAccumulator(input: {
+  statId: string;
+  question: TeacherExamQuestion;
+  questionNumber?: number;
+  isArchivedQuestion?: boolean;
+  versionLabel?: string;
+  unsupportedReason?: string;
+}): ReportQuestionAccumulator {
+  return {
+    ...input,
+    attempts: 0,
+    scoreTotal: 0,
+    correctCount: 0,
+    incorrectCount: 0,
+    partialCount: 0,
+    unansweredCount: 0,
+    unsupportedReason: input.unsupportedReason,
+    distribution: new Map(),
+    respondents: []
+  };
+}
+
+function addDistributionAnswer(accumulator: ReportQuestionAccumulator, key: string, label: string) {
+  const existing = accumulator.distribution.get(key);
+  if (existing) {
+    existing.count += 1;
+    return;
+  }
+  accumulator.distribution.set(key, {
+    key,
+    label,
+    count: 1,
+    isCorrect: isDistributionCorrect(accumulator.question, key)
+  });
+}
+
+function finalizeDistribution(
+  accumulator: ReportQuestionAccumulator
+): TeacherExamReportQuestionDistribution[] {
+  const unanswered = accumulator.distribution.get("__unanswered__");
+  const answered = Array.from(accumulator.distribution.values())
+    .filter((bucket) => bucket.key !== "__unanswered__")
+    .sort((left, right) => {
+      if (right.count !== left.count) return right.count - left.count;
+      return left.label.localeCompare(right.label, "ko-KR");
+    });
+  const visible = answered.slice(0, 4);
+  const remainder = answered.slice(4);
+  if (remainder.length > 0) {
+    visible.push({
+      key: "__other__",
+      label: "기타",
+      count: remainder.reduce((sum, bucket) => sum + bucket.count, 0)
+    });
+  }
+  if (unanswered) visible.push(unanswered);
+  return visible.map((bucket) => ({
+    ...bucket,
+    ratio: bucket.count / Math.max(accumulator.attempts, 1)
+  }));
+}
+
+function finalizeQuestionStat(accumulator: ReportQuestionAccumulator): TeacherExamReportQuestionStat {
+  const unsupportedReason = accumulator.unsupportedReason;
+  if (unsupportedReason) {
+    return {
+      statId: accumulator.statId,
+      questionId: accumulator.question.id,
+      questionNumber: accumulator.questionNumber,
+      type: accumulator.question.type,
+      promptMarkdown: accumulator.question.promptMarkdown,
+      maxScore: accumulator.question.points,
+      averageScore: 0,
+      attempts: 0,
+      correctCount: 0,
+      incorrectCount: 0,
+      partialCount: 0,
+      unansweredCount: 0,
+      correctAnswerLabel: reportCorrectAnswerLabel(accumulator.question),
+      unsupportedReason,
+      isArchivedQuestion: accumulator.isArchivedQuestion,
+      versionLabel: accumulator.versionLabel
+    };
+  }
+  return {
+    statId: accumulator.statId,
+    questionId: accumulator.question.id,
+    questionNumber: accumulator.questionNumber,
+    type: accumulator.question.type,
+    promptMarkdown: accumulator.question.promptMarkdown,
+    maxScore: accumulator.question.points,
+    averageScore: accumulator.attempts > 0 ? roundTenth(accumulator.scoreTotal / accumulator.attempts) : 0,
+    attempts: accumulator.attempts,
+    correctCount: accumulator.correctCount,
+    incorrectCount: accumulator.incorrectCount,
+    partialCount: accumulator.partialCount,
+    unansweredCount: accumulator.unansweredCount,
+    correctAnswerLabel: reportCorrectAnswerLabel(accumulator.question),
+    isArchivedQuestion: accumulator.isArchivedQuestion,
+    versionLabel: accumulator.versionLabel,
+    distribution: finalizeDistribution(accumulator),
+    respondents: accumulator.respondents
+  };
 }
 
 function attemptSummary(attempt: TeacherExamAttempt | null) {
@@ -221,16 +513,56 @@ export class TeacherExamService {
     };
   }
 
-  validatePublish(draft: Omit<TeacherExamRevision, "version" | "createdAt" | "updatedAt">): string[] {
+  private endedMutationGuard() {
+    return {
+      rejectEnded: true,
+      nowMs: this.clock.now().getTime()
+    };
+  }
+
+  private mapMutationBlocked(error: unknown): never {
+    if (error instanceof TeacherExamMutationBlockedError && error.reason === "ENDED") {
+      throw new ExamServiceError(409, "종료된 시험은 수정할 수 없습니다.", "EXAM_ENDED");
+    }
+    throw error;
+  }
+
+  private validateDraftScheduleInput(
+    input: TeacherExamDraftInput | undefined,
+    draft: Omit<TeacherExamRevision, "version" | "createdAt" | "updatedAt">
+  ): string[] {
     const errors: string[] = [];
-    if (!draft.title) errors.push("시험 제목을 입력해 주세요.");
-    if (draft.title.length > 100) errors.push("시험 제목은 100자 이하로 입력해 주세요.");
-    if (new Date(draft.availableFrom).getTime() >= new Date(draft.availableUntil).getTime()) {
+    const source = input ?? {};
+    if (hasOwn(source, "availableFrom") && !isStrictScheduleIsoInput(source.availableFrom)) {
+      errors.push("응시 시작 시간을 올바른 ISO 형식으로 입력해 주세요.");
+    }
+    if (hasOwn(source, "availableUntil") && !isStrictScheduleIsoInput(source.availableUntil)) {
+      errors.push("응시 종료 시간을 올바른 ISO 형식으로 입력해 주세요.");
+    }
+    if (hasOwn(source, "timeLimitMinutes")) {
+      const rawTimeLimit = Number(source.timeLimitMinutes);
+      if (!Number.isInteger(rawTimeLimit) || rawTimeLimit < 1 || rawTimeLimit > 240) {
+        errors.push("제한 시간은 1~240분 사이의 정수여야 합니다.");
+      }
+    }
+    const startTime = Date.parse(draft.availableFrom);
+    const endTime = Date.parse(draft.availableUntil);
+    if (!Number.isFinite(startTime)) errors.push("응시 시작 시간을 올바른 ISO 형식으로 입력해 주세요.");
+    if (!Number.isFinite(endTime)) errors.push("응시 종료 시간을 올바른 ISO 형식으로 입력해 주세요.");
+    if (Number.isFinite(startTime) && Number.isFinite(endTime) && startTime >= endTime) {
       errors.push("응시 시작 시간은 종료 시간보다 빨라야 합니다.");
     }
     if (!Number.isInteger(draft.timeLimitMinutes) || draft.timeLimitMinutes < 1 || draft.timeLimitMinutes > 240) {
       errors.push("제한 시간은 1~240분 사이의 정수여야 합니다.");
     }
+    return [...new Set(errors)];
+  }
+
+  validatePublish(draft: Omit<TeacherExamRevision, "version" | "createdAt" | "updatedAt">): string[] {
+    const errors: string[] = [];
+    if (!draft.title) errors.push("시험 제목을 입력해 주세요.");
+    if (draft.title.length > 100) errors.push("시험 제목은 100자 이하로 입력해 주세요.");
+    errors.push(...this.validateDraftScheduleInput(undefined, draft));
     if (draft.questions.length === 0) errors.push("문항을 1개 이상 추가해 주세요.");
     const ids = new Set<string>();
     for (const question of draft.questions) {
@@ -254,8 +586,8 @@ export class TeacherExamService {
       if (question.type === "OX" && typeof question.answer?.value !== "boolean") {
         errors.push("OX 문항의 정답을 지정해 주세요.");
       }
-      if (question.type === "SHORT" && !question.referenceAnswer?.text && !question.rubricMarkdown) {
-        errors.push("단답형 문항에는 기준 답안 또는 채점 기준이 필요합니다.");
+      if (question.type === "SHORT" && !hasShortAnswerAid(question)) {
+        errors.push("단답식 문항에는 채점 기준 또는 모범 답안이 필요합니다.");
       }
       if (question.type === "ESSAY" && !question.rubricMarkdown) {
         errors.push("서술형 문항에는 채점 기준이 필요합니다.");
@@ -294,7 +626,8 @@ export class TeacherExamService {
       const reference = asRecord(question.referenceAnswer);
       const referenceText = typeof reference.text === "string" ? reference.text.trim() : "";
       const rubric = typeof question.rubricMarkdown === "string" ? question.rubricMarkdown.trim() : "";
-      if (!referenceText && !rubric) return false;
+      const modelAnswer = typeof question.modelAnswerMarkdown === "string" ? question.modelAnswerMarkdown.trim() : "";
+      if (!referenceText && !rubric && !modelAnswer) return false;
     }
     if (type === "ESSAY") {
       const rubric = typeof question.rubricMarkdown === "string" ? question.rubricMarkdown.trim() : "";
@@ -485,6 +818,10 @@ export class TeacherExamService {
 
   async createExam(weekId: string, classroomId: string, input: TeacherExamDraftInput): Promise<TeacherExam> {
     const draft = this.normalizeDraft(input);
+    const errors = this.validateDraftScheduleInput(input, draft);
+    if (errors.length > 0) {
+      throw new ExamServiceError(400, errors.join("\n"), "VALIDATION_ERROR");
+    }
     const exam = await this.store.createTeacherExam({ weekId, classroomId, draftRevision: draft });
     if (!exam) throw new ExamServiceError(404, "주차 또는 강의실을 찾을 수 없습니다.", "NOT_FOUND");
     return exam;
@@ -494,7 +831,63 @@ export class TeacherExamService {
     const exam = await this.store.getTeacherExam(examId);
     if (!exam) throw new ExamServiceError(404, "시험을 찾을 수 없습니다.", "NOT_FOUND");
     const draft = this.normalizeDraft(input, exam.draftRevision);
-    const updated = await this.store.updateTeacherExamDraft(examId, draft);
+    const errors = this.validateDraftScheduleInput(input, draft);
+    if (errors.length > 0) {
+      throw new ExamServiceError(400, errors.join("\n"), "VALIDATION_ERROR");
+    }
+    let updated: TeacherExam | null;
+    try {
+      updated = await this.store.updateTeacherExamDraft(examId, draft, this.endedMutationGuard());
+    } catch (error) {
+      this.mapMutationBlocked(error);
+    }
+    if (!updated) throw new ExamServiceError(404, "시험을 찾을 수 없습니다.", "NOT_FOUND");
+    return updated;
+  }
+
+  async updateSettings(examId: string, input: TeacherExamSettingsInput): Promise<TeacherExam> {
+    const exam = await this.store.getTeacherExam(examId);
+    if (!exam) throw new ExamServiceError(404, "시험을 찾을 수 없습니다.", "NOT_FOUND");
+
+    const title = asLimitedString(input.title, 100);
+    const availableFrom = normalizeSettingsIso(input.availableFrom);
+    const availableUntil = normalizeSettingsIso(input.availableUntil);
+    const timeLimit = Number(input.timeLimitMinutes);
+    const timeLimitMinutes = Number.isInteger(timeLimit) ? timeLimit : NaN;
+    const errors: string[] = [];
+
+    if (!title) errors.push("시험 제목을 입력해 주세요.");
+    if (typeof input.title === "string" && input.title.trim().length > 100) {
+      errors.push("시험 제목은 100자 이하로 입력해 주세요.");
+    }
+    if (!availableFrom) errors.push("시작 시간을 올바른 ISO 형식으로 입력해 주세요.");
+    if (!availableUntil) errors.push("종료 시간을 올바른 ISO 형식으로 입력해 주세요.");
+    if (availableFrom && availableUntil && new Date(availableFrom).getTime() >= new Date(availableUntil).getTime()) {
+      errors.push("응시 시작 시간은 종료 시간보다 빨라야 합니다.");
+    }
+    if (!Number.isInteger(timeLimitMinutes) || timeLimitMinutes < 1 || timeLimitMinutes > 240) {
+      errors.push("제한 시간은 1~240분 사이의 정수여야 합니다.");
+    }
+
+    if (errors.length > 0 || !availableFrom || !availableUntil || !Number.isInteger(timeLimitMinutes)) {
+      throw new ExamServiceError(400, errors.join("\n"), "VALIDATION_ERROR");
+    }
+
+    let updated: TeacherExam | null;
+    try {
+      updated = await this.store.updateTeacherExamSettings(
+        exam.id,
+        {
+          title,
+          availableFrom,
+          availableUntil,
+          timeLimitMinutes
+        },
+        this.endedMutationGuard()
+      );
+    } catch (error) {
+      this.mapMutationBlocked(error);
+    }
     if (!updated) throw new ExamServiceError(404, "시험을 찾을 수 없습니다.", "NOT_FOUND");
     return updated;
   }
@@ -503,11 +896,20 @@ export class TeacherExamService {
     const exam = await this.store.getTeacherExam(examId);
     if (!exam) throw new ExamServiceError(404, "시험을 찾을 수 없습니다.", "NOT_FOUND");
     const draft = this.normalizeDraft(input ?? exam.draftRevision, exam.draftRevision);
-    const errors = this.validatePublish(draft);
-    if (errors.length > 0) {
-      throw new ExamServiceError(400, errors.join("\n"), "VALIDATION_ERROR");
+    const errors = [
+      ...this.validateDraftScheduleInput(input, draft),
+      ...this.validatePublish(draft)
+    ];
+    const uniqueErrors = [...new Set(errors)];
+    if (uniqueErrors.length > 0) {
+      throw new ExamServiceError(400, uniqueErrors.join("\n"), "VALIDATION_ERROR");
     }
-    const published = await this.store.publishTeacherExam(examId, draft);
+    let published: TeacherExam | null;
+    try {
+      published = await this.store.publishTeacherExam(examId, draft, this.endedMutationGuard());
+    } catch (error) {
+      this.mapMutationBlocked(error);
+    }
     if (!published) throw new ExamServiceError(404, "시험을 찾을 수 없습니다.", "NOT_FOUND");
     return published;
   }
@@ -564,6 +966,7 @@ export class TeacherExamService {
     attempt: TeacherExamAttempt;
     submissionId: string;
   }): Promise<TeacherExamAttempt> {
+    const questionCounts = gradingQuestionCounts(input.attempt.examSnapshot);
     const grading = await this.grading.grade({
       model: appConfig.modelName,
       exam: input.attempt.examSnapshot,
@@ -576,30 +979,50 @@ export class TeacherExamService {
         actorUserId: input.actorUserId,
         attemptId: input.attemptId,
         submissionId: input.submissionId,
-        examVersion: input.attempt.examVersion
+        examVersion: input.attempt.examVersion,
+        ...questionCounts
       });
     }
-    const committed = await this.store.commitExamAttemptGrading(
-      input.attemptId,
-      input.submissionId,
+    const committed = await this.store.commitExamAttemptGradingAndUpsertResult({
+      attemptId: input.attemptId,
+      submissionId: input.submissionId,
       grading,
-      this.nowIso()
-    );
-    const attempt = committed ?? input.attempt;
+      atIso: this.nowIso()
+    });
+    const attempt = committed?.attempt ?? input.attempt;
     this.logger.event("[exam_grade]", {
       examId: attempt.examId,
       actorUserId: input.actorUserId,
       attemptId: input.attemptId,
       submissionId: input.submissionId,
       examVersion: attempt.examVersion,
-      gradingSource: grading.gradingSource
+      gradingSource: attempt.grading?.gradingSource ?? grading.gradingSource,
+      fallback: attempt.grading?.fallback ?? grading.fallback ?? false,
+      resultRecordId: committed?.resultRecord?.id,
+      ...questionCounts
+    });
+    return attempt;
+  }
+
+  private async ensureResultRecord(attempt: TeacherExamAttempt): Promise<TeacherExamAttempt> {
+    if (attempt.status !== "GRADED" || !attempt.submissionId || !attempt.grading) return attempt;
+    const ensured = await this.store.ensureTeacherExamResultRecordWithStatus(attempt.id);
+    this.logger.event("[exam_result_backfill]", {
+      examId: attempt.examId,
+      actorUserId: attempt.studentUserId,
+      studentUserId: attempt.studentUserId,
+      attemptId: attempt.id,
+      submissionId: attempt.submissionId,
+      examVersion: attempt.examVersion,
+      resultRecordId: ensured.record?.id,
+      created: ensured.created
     });
     return attempt;
   }
 
   private async finalizeExpiredOrRecover(attempt: TeacherExamAttempt): Promise<TeacherExamAttempt> {
     const recovered = await this.ensureGradingRecovered(attempt);
-    if (recovered.status !== "IN_PROGRESS") return recovered;
+    if (recovered.status !== "IN_PROGRESS") return this.ensureResultRecord(recovered);
     if (this.nowIso() <= addSeconds(recovered.deadlineAt, 5)) return recovered;
     const claim = await this.store.claimExamAttemptSubmission(
       recovered.id,
@@ -683,7 +1106,7 @@ export class TeacherExamService {
       throw new ExamServiceError(status, "시험을 제출할 수 없습니다.", claim.reason);
     }
     if (!claim.shouldGrade) {
-      return this.attemptDto(await this.ensureGradingRecovered(claim.attempt), true);
+      return this.attemptDto(await this.finalizeExpiredOrRecover(claim.attempt), true);
     }
     this.logger.event("[exam_submit]", {
       examId: claim.attempt.examId,
@@ -723,52 +1146,164 @@ export class TeacherExamService {
       )
     );
     const enrollments = await this.store.listEnrollmentsByClassroom(exam.classroomId);
-    const students = await Promise.all(
-      enrollments.map(async (enrollment: ClassroomEnrollment) => ({
-        enrollment,
-        user: await this.store.getUser(enrollment.studentUserId)
-      }))
-    );
-    const graded = attempts.filter((attempt) => attempt.status === "GRADED" && attempt.grading);
-    const averageScore =
-      graded.length > 0
-        ? graded.reduce((sum, attempt) => sum + (attempt.grading?.totalScore ?? 0), 0) / graded.length
-        : 0;
-    const questionStats = new Map<string, { questionId: string; maxScore: number; averageScore: number; attempts: number }>();
-    for (const attempt of graded) {
-      for (const item of attempt.grading?.items ?? []) {
-        const current = questionStats.get(item.questionId) ?? {
-          questionId: item.questionId,
-          maxScore: item.maxScore,
-          averageScore: 0,
-          attempts: 0
-        };
-        current.averageScore =
-          (current.averageScore * current.attempts + item.score) / (current.attempts + 1);
-        current.attempts += 1;
-        questionStats.set(item.questionId, current);
-      }
+    const userIds = new Set([
+      ...enrollments.map((enrollment) => enrollment.studentUserId),
+      ...attempts.map((attempt) => attempt.studentUserId)
+    ]);
+    const users = await Promise.all(Array.from(userIds).map((userId) => this.store.getUser(userId)));
+    const userById = new Map(users.filter((user): user is User => Boolean(user)).map((user) => [user.id, user]));
+    const activeRevision = exam.publishedRevision;
+    const submitted = attempts.filter((attempt) => attempt.status === "GRADING" || attempt.status === "GRADED");
+    const graded = attempts.filter((attempt) => attempt.status === "GRADED");
+    const scoredAttempts = attempts.filter((attempt) => attempt.status === "GRADED" && attempt.grading?.items);
+    const activeMaxScore = revisionScoredMaxScore(activeRevision);
+    const reportScores = new Map<string, TeacherExamReportScore>();
+    for (const attempt of scoredAttempts) {
+      const reportScore = reportScoreForAttempt(attempt);
+      if (reportScore) reportScores.set(attempt.id, reportScore);
     }
+    const scoreEligible = Array.from(reportScores.values()).filter((score) => score.maxScore > 0);
+    const averageScore =
+      activeMaxScore > 0 && scoreEligible.length > 0
+        ? roundTenth(
+            (scoreEligible.reduce((sum, score) => sum + score.scoreRatio, 0) / scoreEligible.length) *
+              activeMaxScore
+          )
+        : 0;
+
+    const accumulators = new Map<string, ReportQuestionAccumulator>();
+    const orderedStatIds: string[] = [];
+    const activeSignatureToStatId = new Map<string, string>();
+    const ensureAccumulator = (input: {
+      statId: string;
+      question: TeacherExamQuestion;
+      questionNumber?: number;
+      isArchivedQuestion?: boolean;
+      versionLabel?: string;
+      unsupportedReason?: string;
+    }) => {
+      const existing = accumulators.get(input.statId);
+      if (existing) return existing;
+      const accumulator = makeQuestionAccumulator(input);
+      accumulators.set(input.statId, accumulator);
+      orderedStatIds.push(input.statId);
+      return accumulator;
+    };
+
+    if (activeRevision) {
+      activeRevision.questions.forEach((question, index) => {
+        const signature = reportQuestionSignature(question);
+        const statId = `active:${question.id}`;
+        activeSignatureToStatId.set(`${question.id}|${signature}`, statId);
+        ensureAccumulator({
+          statId,
+          question,
+          questionNumber: index + 1,
+          unsupportedReason:
+            !activeRevision.aiGradingEnabled && isWrittenQuestion(question)
+              ? "서술형 AI 채점이 꺼져 있어 종합 점수에서 제외되었습니다."
+              : undefined
+        });
+      });
+    }
+
+    for (const attempt of scoredAttempts) {
+      const itemByQuestionId = new Map((attempt.grading?.items ?? []).map((item) => [item.questionId, item]));
+      attempt.examSnapshot.questions.forEach((question, index) => {
+        const signature = reportQuestionSignature(question);
+        const activeStatId = activeSignatureToStatId.get(`${question.id}|${signature}`);
+        const statId =
+          activeStatId ??
+          `archived:${attempt.examVersion}:${question.id}:${reportSignatureHash(signature)}`;
+        const accumulator = ensureAccumulator({
+          statId,
+          question,
+          questionNumber: index + 1,
+          isArchivedQuestion: !activeStatId,
+          versionLabel: !activeStatId ? `v${attempt.examVersion}` : undefined,
+          unsupportedReason:
+            !attempt.settingsSnapshot.aiGradingEnabled && isWrittenQuestion(question)
+              ? "서술형 AI 채점이 꺼져 있어 종합 점수에서 제외되었습니다."
+              : undefined
+        });
+        const item = itemByQuestionId.get(question.id);
+        if (item?.excludedFromScore) {
+          accumulator.unsupportedReason = "서술형 AI 채점이 꺼져 있어 종합 점수에서 제외되었습니다.";
+          return;
+        }
+        const answer = normalizeReportAnswer(question, attempt.answers[question.id]);
+        const score = item?.score ?? 0;
+        accumulator.attempts += 1;
+        accumulator.scoreTotal += score;
+        addDistributionAnswer(accumulator, answer.key, answer.label);
+
+        let result: TeacherExamReportQuestionRespondent["result"] = "WRONG";
+        if (!answer.hasAnswer) {
+          accumulator.unansweredCount += 1;
+          result = "UNANSWERED";
+        } else if (item?.verdict === "CORRECT") {
+          accumulator.correctCount += 1;
+          result = "CORRECT";
+        } else if (item?.verdict === "PARTIAL") {
+          accumulator.partialCount += 1;
+          result = "PARTIAL";
+        } else {
+          accumulator.incorrectCount += 1;
+        }
+
+        accumulator.respondents.push({
+          studentUserId: attempt.studentUserId,
+          displayName: userById.get(attempt.studentUserId)?.displayName ?? "알 수 없는 학생",
+          answerLabel: answer.label,
+          result,
+          score,
+          maxScore: item?.maxScore ?? question.points,
+          submittedAt: attempt.submittedAt
+        });
+      });
+    }
+
+    const questionStats = orderedStatIds.map((statId) => finalizeQuestionStat(accumulators.get(statId)!));
+
+    const statusForAttempt = (attempt: TeacherExamAttempt | null): TeacherExamReportStudentStatus => {
+      if (!attempt) {
+        if (activeRevision && this.nowIso() > activeRevision.availableUntil) return "MISSED";
+        return "NOT_STARTED";
+      }
+      if (attempt.status === "IN_PROGRESS") return "IN_PROGRESS";
+      return "SUBMITTED";
+    };
+
+    const students = enrollments.map((enrollment: ClassroomEnrollment) => {
+      const attempt = attempts.find((item) => item.studentUserId === enrollment.studentUserId) ?? null;
+      return {
+        enrollment,
+        user: userById.get(enrollment.studentUserId) ?? null,
+        attempt
+      };
+    });
+
     return {
       exam: this.teacherDto(exam),
       summary: {
         enrolledCount: enrollments.length,
         attemptCount: attempts.length,
         gradedCount: graded.length,
+        submittedCount: submitted.length,
         averageScore,
-        maxScore: totalPoints(exam.publishedRevision),
-        completionRatio: enrollments.length > 0 ? attempts.length / enrollments.length : 0
+        maxScore: activeMaxScore,
+        completionRatio: enrollments.length > 0 ? submitted.length / enrollments.length : 0
       },
-      students: students.map(({ enrollment, user }: { enrollment: ClassroomEnrollment; user: User | null }) => {
-        const attempt = attempts.find((item) => item.studentUserId === enrollment.studentUserId) ?? null;
-        return {
+      students: students.map(
+        ({ enrollment, user, attempt }: { enrollment: ClassroomEnrollment; user: User | null; attempt: TeacherExamAttempt | null }) => ({
           studentUserId: enrollment.studentUserId,
           displayName: user?.displayName ?? "알 수 없는 학생",
-          status: attempt?.status ?? "NOT_STARTED",
+          status: statusForAttempt(attempt),
+          reportScore: attempt ? reportScores.get(attempt.id) : undefined,
           attempt: attempt ? this.attemptDto(attempt, false) : null
-        };
-      }),
-      questionStats: Array.from(questionStats.values())
+        })
+      ),
+      questionStats: activeRevision ? questionStats : []
     };
   }
 }

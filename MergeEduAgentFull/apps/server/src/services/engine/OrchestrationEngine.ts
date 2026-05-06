@@ -9,6 +9,7 @@ import {
   SessionState
 } from "../../types/domain.js";
 import { parseOrchestratorPlan } from "../llm/JsonSchemaGuards.js";
+import { resolveLearningProgressPage } from "../learningProgress.js";
 import { Orchestrator } from "../agents/Orchestrator.js";
 import { JsonStore } from "../storage/JsonStore.js";
 import { GeminiBridgeClient } from "../llm/GeminiBridgeClient.js";
@@ -249,6 +250,7 @@ export class OrchestrationEngine {
     }
     const state = structuredClone(stored);
     const pageState = ensurePageState(state, state.currentPage);
+    const learningProgressPage = resolveLearningProgressPage(state);
     return {
       ok: true,
       newMessages: [],
@@ -261,7 +263,8 @@ export class OrchestrationEngine {
       },
       patch: {
         currentPage: state.currentPage,
-        progressText: progressText(state.currentPage),
+        learningProgressPage,
+        progressText: progressText(learningProgressPage),
         pageState,
         learnerModel: state.learnerModel,
         activeIntervention: state.activeIntervention ?? null,
@@ -666,6 +669,7 @@ export class OrchestrationEngine {
     }
 
     const pageState = ensurePageState(dispatchedState, dispatchedState.currentPage);
+    const learningProgressPage = resolveLearningProgressPage(dispatchedState, maxPage);
     const patchQuizRecord =
       body.event.type === "QUIZ_SUBMITTED" && submittedQuizId
         ? findLatestQuizRecord(
@@ -681,7 +685,8 @@ export class OrchestrationEngine {
       ui: responseUi,
       patch: {
         currentPage: dispatchedState.currentPage,
-        progressText: progressText(dispatchedState.currentPage),
+        learningProgressPage,
+        progressText: progressText(learningProgressPage),
         pageState,
         learnerModel: dispatchedState.learnerModel,
         activeIntervention: dispatchedState.activeIntervention ?? null,

@@ -67,23 +67,25 @@ export const ChatBubble = memo(function ChatBubble({ message, onQuizTypeSelect, 
       data-testid="session-chat-bubble"
     >
       {!isUser ? (
-        <div className="chat-agent-label">{message.agent}</div>
-      ) : null}
-      {message.thoughtSummaryMarkdown ? (
-        <details
-          className="thought-summary-toggle"
-          open={thoughtOpen}
-          onToggle={(event) => setThoughtOpen((event.currentTarget as HTMLDetailsElement).open)}
-        >
-          <summary>
-            사고 요약 보기
-          </summary>
-          <div className="thought-summary-body">
-            <ReactMarkdown remarkPlugins={markdownRemarkPlugins} rehypePlugins={markdownRehypePlugins}>
-              {message.thoughtSummaryMarkdown}
-            </ReactMarkdown>
-          </div>
-        </details>
+        <div className="chat-bubble-meta">
+          <div className="chat-agent-label">{message.agent}</div>
+          {message.thoughtSummaryMarkdown ? (
+            <details
+              className="thought-summary-toggle"
+              open={thoughtOpen}
+              onToggle={(event) => setThoughtOpen((event.currentTarget as HTMLDetailsElement).open)}
+            >
+              <summary>
+                사고 요약 보기
+              </summary>
+              <div className="thought-summary-body">
+                <ReactMarkdown remarkPlugins={markdownRemarkPlugins} rehypePlugins={markdownRehypePlugins}>
+                  {message.thoughtSummaryMarkdown}
+                </ReactMarkdown>
+              </div>
+            </details>
+          ) : null}
+        </div>
       ) : null}
       <ReactMarkdown remarkPlugins={markdownRemarkPlugins} rehypePlugins={markdownRehypePlugins}>
         {message.contentMarkdown}

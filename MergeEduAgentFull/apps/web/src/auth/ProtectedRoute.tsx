@@ -7,7 +7,7 @@ export function ProtectedRoute() {
   const location = useLocation();
 
   if (auth.status === "checking") {
-    return <main className="page-shell">로그인 상태 확인 중...</main>;
+    return <main className="page-shell" data-testid="app-shell-content">로그인 상태 확인 중...</main>;
   }
 
   if (auth.status === "unverified") {
@@ -26,7 +26,18 @@ export function ProtectedRoute() {
   }
 
   if (auth.status === "guest") {
-    return <Navigate to={`/login?next=${encodeURIComponent(location.pathname)}`} replace />;
+    const attemptedPath = `${location.pathname}${location.search}${location.hash}`;
+    const hasMeaningfulNext = attemptedPath && attemptedPath !== "/";
+    const loginPath = hasMeaningfulNext
+      ? `/login?next=${encodeURIComponent(attemptedPath)}`
+      : "/login";
+    return (
+      <Navigate
+        to={loginPath}
+        replace
+        state={hasMeaningfulNext ? { next: attemptedPath } : undefined}
+      />
+    );
   }
 
   return (

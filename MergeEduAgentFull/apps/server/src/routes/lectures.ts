@@ -7,6 +7,7 @@ import { ServerDeps } from "../bootstrap.js";
 import { LectureItem } from "../types/domain.js";
 import {
   requireAuth,
+  requireLectureReadable,
   requireLectureWritable,
   requireTeacher,
   requireVerifiedEmail,
@@ -16,6 +17,28 @@ import {
 
 function makeLectureId(): string {
   return `lec_${Math.random().toString(36).slice(2, 10)}`;
+}
+
+function sanitizeDownloadName(title: string): string {
+  const safe = title
+    .replace(/[\u0000-\u001f\u007f]/g, "")
+    .replace(/[\\/:*?"<>|]/g, "_")
+    .trim()
+    .slice(0, 100);
+  return safe || "material";
+}
+
+function resolveReadablePdfPath(deps: ServerDeps, lecture: LectureItem): string | null {
+  const uploadRoot = path.resolve(deps.store.getUploadDir());
+  const resolvedPdfPath = path.resolve(lecture.pdf.path);
+  const relativePath = path.relative(uploadRoot, resolvedPdfPath);
+  if (!relativePath || relativePath.startsWith("..") || path.isAbsolute(relativePath)) {
+    return null;
+  }
+  if (path.extname(resolvedPdfPath).toLowerCase() !== ".pdf") {
+    return null;
+  }
+  return resolvedPdfPath;
 }
 
 const upload = multer({
@@ -150,6 +173,54 @@ export function lecturesRouter(deps: ServerDeps): Router {
       }
     }
   );
+
+  router.patch("/lectures/:lectureId", requireTeacher, async (req, res, next) => {
+    try {
+      const lectureId = String(req.params.lectureId);
+      const lecture = await requireLectureWritable(deps, req, res, lectureId);
+      if (!lecture) return;
+      const title = String(req.body?.title ?? "").trim();
+      if (!title) {
+        res.status(400).json({ ok: false, error: "자료 이름을 입력해 주세요." });
+        return;
+      }
+      if (title.length > 100) {
+        res.status(400).json({ ok: false, error: "자료 이름은 100자 이하로 입력해 주세요." });
+        return;
+      }
+      const updated = await deps.store.updateLecture(lectureId, { title });
+      if (!updated) {
+        res.status(404).json({ ok: false, error: "Lecture not found" });
+        return;
+      }
+      res.json({ ok: true, data: updated });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  router.get("/lectures/:lectureId/download", async (req, res, next) => {
+    try {
+      const lectureId = String(req.params.lectureId);
+      const lecture = await requireLectureReadable(deps, req, res, lectureId);
+      if (!lecture) return;
+      const resolvedPdfPath = resolveReadablePdfPath(deps, lecture);
+      if (!resolvedPdfPath) {
+        res.status(404).json({ ok: false, error: "PDF not found" });
+        return;
+      }
+      const downloadName = `${sanitizeDownloadName(lecture.title)}.pdf`;
+      res.setHeader("Cache-Control", "private, no-store");
+      res.setHeader(
+        "Content-Disposition",
+        `attachment; filename="material.pdf"; filename*=UTF-8''${encodeURIComponent(downloadName)}`
+      );
+      res.type("application/pdf");
+      res.sendFile(resolvedPdfPath);
+    } catch (error) {
+      next(error);
+    }
+  });
 
   router.delete("/lectures/:lectureId", requireTeacher, async (req, res, next) => {
     try {

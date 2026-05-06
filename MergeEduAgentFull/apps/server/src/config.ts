@@ -83,7 +83,13 @@ export const appConfig = {
     .split(",")
     .map((item) => item.trim())
     .filter(Boolean),
-  examStudioAiTimeoutMs: Number(process.env.EXAM_STUDIO_AI_TIMEOUT_MS ?? "45000")
+  examStudioAiTimeoutMs: Number(process.env.EXAM_STUDIO_AI_TIMEOUT_MS ?? "45000"),
+  discussionAssistantAiTimeoutMs: Number(
+    process.env.DISCUSSION_ASSISTANT_AI_TIMEOUT_MS ?? "45000"
+  ),
+  reportCriteriaAssistantAiTimeoutMs: Number(
+    process.env.REPORT_CRITERIA_ASSISTANT_AI_TIMEOUT_MS ?? "45000"
+  )
 } as const;
 
 if (Number.isNaN(appConfig.port)) {
@@ -96,4 +102,18 @@ if (appConfig.smtpPort !== undefined && Number.isNaN(appConfig.smtpPort)) {
 
 if (Number.isNaN(appConfig.examStudioAiTimeoutMs) || appConfig.examStudioAiTimeoutMs < 1000) {
   throw new Error("EXAM_STUDIO_AI_TIMEOUT_MS must be at least 1000");
+}
+
+if (
+  Number.isNaN(appConfig.discussionAssistantAiTimeoutMs) ||
+  appConfig.discussionAssistantAiTimeoutMs < 1000
+) {
+  throw new Error("DISCUSSION_ASSISTANT_AI_TIMEOUT_MS must be at least 1000");
+}
+
+if (
+  Number.isNaN(appConfig.reportCriteriaAssistantAiTimeoutMs) ||
+  appConfig.reportCriteriaAssistantAiTimeoutMs < 1000
+) {
+  throw new Error("REPORT_CRITERIA_ASSISTANT_AI_TIMEOUT_MS must be at least 1000");
 }

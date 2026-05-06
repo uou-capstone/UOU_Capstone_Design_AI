@@ -913,6 +913,7 @@ describe("OrchestrationEngine", () => {
   it("does not persist a superseded streaming page change", async () => {
     let persisted = makeSession();
     persisted.currentPage = 1;
+    persisted.learningProgressPage = 1;
     persisted.pageStates = [
       { page: 1, status: "EXPLAINED", lastTouchedAt: new Date().toISOString() }
     ];
@@ -953,6 +954,7 @@ describe("OrchestrationEngine", () => {
     const dispatcher = {
       dispatch: async (state: SessionState) => {
         if (state.currentPage === 2) {
+          state.learningProgressPage = 99;
           markFirstEntered();
           await releaseFirstPromise;
         }
@@ -1027,17 +1029,22 @@ describe("OrchestrationEngine", () => {
     await Promise.all([first, second]);
 
     expect(persisted.currentPage).toBe(3);
+    expect(persisted.learningProgressPage).toBe(1);
     expect(persisted.messages.map((message) => message.contentMarkdown)).toEqual([
       "3페이지 설명"
     ]);
     expect(firstFinals.at(-1)?.type).toBe("final");
     expect(firstFinals.at(-1)?.data.newMessages).toEqual([]);
+    expect(firstFinals.at(-1)?.data.patch.learningProgressPage).toBe(1);
+    expect(firstFinals.at(-1)?.data.patch.progressText).toBe("~1페이지까지 진행");
     expect(secondFinals.at(-1)?.data.patch.currentPage).toBe(3);
+    expect(secondFinals.at(-1)?.data.patch.learningProgressPage).toBe(1);
   });
 
   it("rolls back a page change superseded during the final save window", async () => {
     let persisted = makeSession();
     persisted.currentPage = 1;
+    persisted.learningProgressPage = 1;
     persisted.pageStates = [
       { page: 1, status: "EXPLAINED", lastTouchedAt: new Date().toISOString() }
     ];
@@ -1081,6 +1088,9 @@ describe("OrchestrationEngine", () => {
 
     const dispatcher = {
       dispatch: async (state: SessionState) => {
+        if (state.currentPage === 2) {
+          state.learningProgressPage = 99;
+        }
         const msg = {
           id: `msg_page_${state.currentPage}`,
           role: "assistant" as const,
@@ -1140,10 +1150,13 @@ describe("OrchestrationEngine", () => {
 
     expect(firstFinals.at(-1)?.type).toBe("final");
     expect(firstFinals.at(-1)?.data.newMessages).toEqual([]);
+    expect(firstFinals.at(-1)?.data.patch.learningProgressPage).toBe(1);
     expect(persisted.currentPage).toBe(3);
+    expect(persisted.learningProgressPage).toBe(1);
     expect(persisted.messages.map((message) => message.contentMarkdown)).toEqual([
       "3페이지 설명"
     ]);
     expect(secondFinals.at(-1)?.data.patch.currentPage).toBe(3);
+    expect(secondFinals.at(-1)?.data.patch.learningProgressPage).toBe(1);
   });
 });

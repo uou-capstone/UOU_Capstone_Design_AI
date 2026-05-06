@@ -51,12 +51,25 @@ export interface ClassroomEnrollment {
   createdAt: IsoString;
 }
 
+export type ClassroomInvitationStatus = "PENDING" | "ACCEPTED";
+
+export interface ClassroomInvitation {
+  id: string;
+  classroomId: string;
+  studentUserId: string;
+  invitedByTeacherId: string;
+  status: ClassroomInvitationStatus;
+  createdAt: IsoString;
+  updatedAt: IsoString;
+  acceptedAt?: IsoString;
+}
+
 export interface InviteAuditLogEntry {
   id: string;
   classroomId: string;
   teacherId: string;
   studentUserId?: string;
-  action: "SEARCH" | "ENROLL" | "REMOVE";
+  action: "SEARCH" | "INVITE" | "ENROLL" | "ACCEPT" | "REMOVE";
   result: "SUCCESS" | "NOT_FOUND" | "FORBIDDEN" | "DUPLICATE";
   createdAt: IsoString;
 }
@@ -96,6 +109,100 @@ export interface Classroom {
   updatedAt: IsoString;
 }
 
+export type ClassroomNoticeCategory =
+  | "GENERAL"
+  | "EXAM"
+  | "MATERIAL"
+  | "DISCUSSION"
+  | "ASSIGNMENT";
+export type ClassroomNoticePriority = "NORMAL" | "IMPORTANT";
+export type ClassroomNoticeStatus = "DRAFT" | "PUBLISHED";
+export type ClassroomNoticeTarget = "CLASS";
+
+export interface ClassroomNoticeAttachment {
+  id: string;
+  name: string;
+  size: number;
+  mimeType?: string;
+}
+
+export interface ClassroomNotice {
+  id: string;
+  classroomId: string;
+  authorUserId: string;
+  title: string;
+  contentMarkdown: string;
+  category: ClassroomNoticeCategory;
+  priority: ClassroomNoticePriority;
+  target: ClassroomNoticeTarget;
+  pinned: boolean;
+  status: ClassroomNoticeStatus;
+  publishAt?: IsoString;
+  publishedAt?: IsoString;
+  attachments: ClassroomNoticeAttachment[];
+  createdAt: IsoString;
+  updatedAt: IsoString;
+}
+
+export interface ClassroomNoticeComment {
+  id: string;
+  classroomId: string;
+  noticeId: string;
+  authorUserId: string;
+  parentCommentId?: string;
+  contentMarkdown: string;
+  createdAt: IsoString;
+  updatedAt: IsoString;
+}
+
+export type ClassroomDiscussionCategory = "NOTICE" | "QUESTION" | "FREE" | "RESOURCE";
+export type ClassroomDiscussionStatus = "DRAFT" | "PUBLISHED";
+export type ClassroomDiscussionVisibility = "CLASS";
+
+export interface ClassroomDiscussionAttachment {
+  id: string;
+  name: string;
+  size: number;
+  mimeType?: string;
+}
+
+export interface ClassroomDiscussionPost {
+  id: string;
+  classroomId: string;
+  authorUserId: string;
+  title: string;
+  contentMarkdown: string;
+  category: ClassroomDiscussionCategory;
+  visibility: ClassroomDiscussionVisibility;
+  pinned: boolean;
+  anonymous: boolean;
+  allowComments: boolean;
+  status: ClassroomDiscussionStatus;
+  attachments: ClassroomDiscussionAttachment[];
+  viewCount: number;
+  publishedAt?: IsoString;
+  createdAt: IsoString;
+  updatedAt: IsoString;
+}
+
+export interface ClassroomDiscussionViewReceipt {
+  classroomId: string;
+  postId: string;
+  viewerUserId: string;
+  lastViewedAt: IsoString;
+}
+
+export interface ClassroomDiscussionComment {
+  id: string;
+  classroomId: string;
+  postId: string;
+  authorUserId: string;
+  parentCommentId?: string;
+  contentMarkdown: string;
+  createdAt: IsoString;
+  updatedAt: IsoString;
+}
+
 export interface Week {
   id: string;
   classroomId: string;
@@ -123,6 +230,124 @@ export interface LectureItem {
   };
   createdAt: IsoString;
   updatedAt: IsoString;
+}
+
+export type ClassroomAttendanceStatus =
+  | "active"
+  | "completed"
+  | "notStarted"
+  | "needsAttention"
+  | "noMaterials";
+
+export interface ClassroomAttendanceLectureProgress {
+  lectureId: string;
+  lectureTitle: string;
+  weekId: string;
+  weekTitle: string;
+  weekIndex: number;
+  totalPages: number;
+  maxReachedPage: number;
+  completed: boolean;
+  lastTouchedAt?: IsoString;
+}
+
+export interface ClassroomAttendanceStudent {
+  studentUserId: string;
+  displayName: string;
+  inviteCode: string;
+  maskedEmail: string;
+  enrolledAt: IsoString;
+  status: ClassroomAttendanceStatus;
+  completedLectureCount: number;
+  totalLectureCount: number;
+  totalReachedPages: number;
+  totalPages: number;
+  completionRatio: number;
+  pageCoverageRatio: number;
+  currentWeekTitle?: string;
+  lastTouchedAt?: IsoString;
+  lectures: ClassroomAttendanceLectureProgress[];
+}
+
+export interface ClassroomAttendanceSummary {
+  totalStudents: number;
+  activeStudentCount: number;
+  attentionStudentCount: number;
+  totalLectureCount: number;
+  totalPages: number;
+  weeks: Week[];
+  students: ClassroomAttendanceStudent[];
+}
+
+export type StudentClassroomAttendanceExamParticipationStatus =
+  | "graded"
+  | "submitted"
+  | "inProgress"
+  | "missed"
+  | "upcoming"
+  | "open";
+
+export type StudentClassroomAttendanceExamStatusTone =
+  | "complete"
+  | "progress"
+  | "missed"
+  | "upcoming"
+  | "none";
+
+export type StudentClassroomAttendanceExamAction =
+  | { kind: "result"; label: "결과 보기"; to: string }
+  | { kind: "take"; label: "시험 응시"; to: string }
+  | { kind: "disabled"; label: "채점 중" | "결과 준비 중" | "시험 예정" | "시험 종료" };
+
+export interface StudentClassroomAttendanceExam {
+  examId: string;
+  weekId: string;
+  title: string;
+  availableFrom?: IsoString;
+  availableUntil?: IsoString;
+  timeLimitMinutes?: number;
+  totalPoints: number;
+  questionCount: number;
+  participationStatus: StudentClassroomAttendanceExamParticipationStatus;
+  statusLabel: string;
+  statusTone: Exclude<StudentClassroomAttendanceExamStatusTone, "none">;
+  action: StudentClassroomAttendanceExamAction;
+  attempt?: {
+    status: TeacherExamAttemptStatus;
+    startedAt?: IsoString;
+    submittedAt?: IsoString;
+    gradedAt?: IsoString;
+    hasGrading: boolean;
+  };
+}
+
+export interface StudentClassroomAttendanceWeek {
+  weekId: string;
+  weekTitle: string;
+  weekIndex: number;
+  lectureCount: number;
+  completedLectureCount: number;
+  lectureAttendanceRatio: number;
+  lectures: ClassroomAttendanceLectureProgress[];
+  examCount: number;
+  completedExamCount: number;
+  inProgressExamCount: number;
+  missedExamCount: number;
+  examStatusLabel: string;
+  examStatusTone: StudentClassroomAttendanceExamStatusTone;
+  exams: StudentClassroomAttendanceExam[];
+}
+
+export interface StudentClassroomAttendanceSummary {
+  classroomId: string;
+  studentUserId: string;
+  totalWeeks: number;
+  totalLectureCount: number;
+  completedLectureCount: number;
+  overallAttendanceRatio: number;
+  totalExamCount: number;
+  completedExamCount: number;
+  weeks: StudentClassroomAttendanceWeek[];
 }
 
 export type PageStatus =
@@ -294,6 +519,8 @@ export interface TeacherExamGradingItem {
   maxScore: number;
   verdict: "CORRECT" | "WRONG" | "PARTIAL";
   feedbackMarkdown: string;
+  gradingMode?: "SYSTEM" | "AI" | "FALLBACK" | "EXCLUDED";
+  excludedFromScore?: boolean;
 }
 
 export interface TeacherExamGrading {
@@ -327,6 +554,87 @@ export interface TeacherExamAttempt {
   grading?: TeacherExamGrading;
 }
 
+export interface TeacherExamResultRecord {
+  id: string;
+  schemaVersion: "1.0";
+  examId: string;
+  classroomId: string;
+  weekId: string;
+  attemptId: string;
+  submissionId: string;
+  studentUserId: string;
+  examVersion: number;
+  generatedAt: IsoString;
+  examTitle: string;
+  settingsSnapshot: TeacherExamSettingsSnapshot;
+  answers: Record<string, unknown>;
+  grading: TeacherExamGrading;
+  questions: Array<
+    Pick<
+      TeacherExamQuestion,
+      | "id"
+      | "type"
+      | "promptMarkdown"
+      | "points"
+      | "choices"
+      | "answer"
+      | "referenceAnswer"
+      | "rubricMarkdown"
+      | "modelAnswerMarkdown"
+      | "explanationMarkdown"
+    >
+  >;
+  submittedAt?: IsoString;
+  gradedAt?: IsoString;
+}
+
+export type TeacherExamReportStudentStatus = "NOT_STARTED" | "IN_PROGRESS" | "SUBMITTED" | "MISSED";
+
+export interface TeacherExamReportScore {
+  score: number;
+  maxScore: number;
+  scoreRatio: number;
+}
+
+export interface TeacherExamReportQuestionDistribution {
+  key: string;
+  label: string;
+  count: number;
+  ratio: number;
+  isCorrect?: boolean;
+}
+
+export interface TeacherExamReportQuestionRespondent {
+  studentUserId: string;
+  displayName: string;
+  answerLabel: string;
+  result: "CORRECT" | "WRONG" | "PARTIAL" | "UNANSWERED" | "UNSUPPORTED";
+  score: number;
+  maxScore: number;
+  submittedAt?: IsoString;
+}
+
+export interface TeacherExamReportQuestionStat {
+  statId: string;
+  questionId: string;
+  questionNumber?: number;
+  type?: TeacherExamQuestionType;
+  promptMarkdown?: string;
+  maxScore: number;
+  averageScore: number;
+  attempts: number;
+  correctCount?: number;
+  incorrectCount?: number;
+  partialCount?: number;
+  unansweredCount?: number;
+  correctAnswerLabel?: string;
+  unsupportedReason?: string;
+  isArchivedQuestion?: boolean;
+  versionLabel?: string;
+  distribution?: TeacherExamReportQuestionDistribution[];
+  respondents?: TeacherExamReportQuestionRespondent[];
+}
+
 export interface ExamStudioProposal {
   answerMarkdown?: string;
   replyMarkdown: string;
@@ -347,6 +655,45 @@ export interface ExamStudioProposal {
   replaceQuestionId?: string;
   fallback?: boolean;
   source?: "AI" | "AI_UNAVAILABLE";
+}
+
+export interface ReportCriteriaAssistantCriterion {
+  name: string;
+  description: string;
+}
+
+export interface ReportCriteriaAssistantSummaryCard {
+  title: string;
+  body: string;
+}
+
+export type ReportCriteriaAssistantMethod =
+  | "messageOnly"
+  | "draftCriterion"
+  | "reviseCriterion"
+  | "createCriterion"
+  | "updateCriterion"
+  | "deleteCriterion";
+
+export interface ReportCriteriaAssistantOperation {
+  method: ReportCriteriaAssistantMethod;
+  params?: {
+    criterion?: ReportCriteriaAssistantCriterion;
+    targetCriterionId?: string;
+    targetCriterionName?: string;
+    targetCriterionDescription?: string;
+    targetCriterionUpdatedAt?: IsoString;
+    rationale?: string;
+    summaryCards?: ReportCriteriaAssistantSummaryCard[];
+  };
+}
+
+export interface ReportCriteriaAssistantProposal {
+  replyMarkdown: string;
+  operation: ReportCriteriaAssistantOperation;
+  source?: "AI" | "AI_UNAVAILABLE";
+  fallback?: boolean;
+  downgradeReason?: string;
 }
 
 export type ExamStudioOperation =
@@ -568,6 +915,8 @@ export interface StudentReportSourceStats {
   quizCount: number;
   gradedQuizCount: number;
   averageQuizScore: number;
+  teacherExamResultCount?: number;
+  teacherExamAverageScore?: number;
   feedbackCount: number;
   memoryRefreshCount: number;
 }
@@ -602,6 +951,7 @@ export interface SessionState {
   lectureId: string;
   ownerUserId?: string;
   currentPage: number;
+  learningProgressPage?: number;
   pageStates: PageState[];
   messages: ChatMessage[];
   quizzes: QuizRecord[];
@@ -650,6 +1000,7 @@ export interface EventApiResponse {
   };
   patch: {
     currentPage: number;
+    learningProgressPage: number;
     progressText: string;
     pageState?: PageState;
     learnerModel: LearnerModel;

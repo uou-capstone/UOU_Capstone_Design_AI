@@ -37,6 +37,17 @@ function isBoundedRatio(value: unknown): value is number {
   return typeof value === "number" && Number.isFinite(value) && value >= 0 && value <= 1;
 }
 
+function getLearningProgressPage(session: SessionState | null, totalPages: number): number {
+  if (!session) return 0;
+  const parsed = Number(session.learningProgressPage ?? 0);
+  if (!Number.isFinite(parsed) || parsed < 0) return 0;
+  return Math.min(Math.max(0, Math.floor(parsed)), Math.max(1, totalPages));
+}
+
+function formatLearningProgress(page: number): string {
+  return `~${page}페이지까지 진행`;
+}
+
 export function SessionRoute() {
   const { lectureId } = useParams<{ lectureId: string }>();
   const navigate = useNavigate();
@@ -82,6 +93,7 @@ export function SessionRoute() {
   const activeQuizRef = useRef<QuizJson | null>(null);
   const activeRouteLectureIdRef = useRef<string | undefined>(lectureId);
   const loadSessionRunIdRef = useRef(0);
+  const currentRouteTarget = `${location.pathname}${location.search}${location.hash}`;
 
   const commitSession = useCallback((nextOrUpdater: SessionState | null | ((prev: SessionState | null) => SessionState | null)) => {
     setSession((prev) => {
@@ -103,6 +115,10 @@ export function SessionRoute() {
     if (!session || !activeQuiz) return undefined;
     return findCurrentQuizRecord(session.quizzes, activeQuiz);
   }, [session, activeQuiz]);
+  const learningProgressPage = getLearningProgressPage(session, lectureNumPages);
+  const learningProgressRatio = lectureNumPages > 0
+    ? Math.min(1, learningProgressPage / lectureNumPages)
+    : 0;
 
   const cancelPendingStreamFlush = useCallback(() => {
     if (streamFlushRafRef.current !== null) {
@@ -190,17 +206,20 @@ export function SessionRoute() {
       setPdfUrl(data.pdfUrl);
       setLectureNumPages(Math.max(1, data.lecture.pdf.numPages || 1));
       setAiStatus(data.aiStatus);
-      setProgressText(`~${data.session.currentPage}페이지까지 진행`);
+      setProgressText(formatLearningProgress(
+        getLearningProgressPage(data.session, Math.max(1, data.lecture.pdf.numPages || 1))
+      ));
     } catch (error) {
       if (!canCommitLoad()) return;
       const message = error instanceof Error ? error.message : "세션을 불러오지 못했습니다.";
       setBootError(message);
       if (error instanceof ApiError && error.status === 401) {
         await auth.refreshMe().catch(() => null);
-        navigate(`/login?next=${encodeURIComponent(location.pathname)}`, { replace: true });
+        navigate(`/login?next=${encodeURIComponent(currentRouteTarget)}`, { replace: true });
       }
       if (error instanceof ApiError && error.code === "EMAIL_NOT_VERIFIED") {
-        navigate("/verify-email", { replace: true });
+        await auth.refreshMe().catch(() => null);
+        navigate(`/verify-email?next=${encodeURIComponent(currentRouteTarget)}`, { replace: true });
       }
     } finally {
       if (canCommitLoad()) {
@@ -502,6 +521,9 @@ export function SessionRoute() {
               return {
                 ...prev,
                 currentPage: isCurrentRun ? response.patch.currentPage : prev.currentPage,
+                learningProgressPage: isCurrentRun
+                  ? response.patch.learningProgressPage
+                  : prev.learningProgressPage,
                 learnerModel: isCurrentRun ? response.patch.learnerModel : prev.learnerModel,
                 activeIntervention:
                   isCurrentRun && response.patch.activeIntervention !== undefined
@@ -552,11 +574,12 @@ export function SessionRoute() {
       }
       if (error instanceof ApiError && error.status === 401) {
         await auth.refreshMe().catch(() => null);
-        navigate(`/login?next=${encodeURIComponent(location.pathname)}`, { replace: true });
+        navigate(`/login?next=${encodeURIComponent(currentRouteTarget)}`, { replace: true });
         return false;
       }
       if (error instanceof ApiError && error.code === "EMAIL_NOT_VERIFIED") {
-        navigate("/verify-email", { replace: true });
+        await auth.refreshMe().catch(() => null);
+        navigate(`/verify-email?next=${encodeURIComponent(currentRouteTarget)}`, { replace: true });
         return false;
       }
       const message = error instanceof Error ? error.message : "이벤트 처리 중 오류가 발생했습니다.";
@@ -582,7 +605,7 @@ export function SessionRoute() {
     flushStreamBuffers,
     handleStreamEvent,
     lectureNumPages,
-    location.pathname,
+    currentRouteTarget,
     navigate,
     resetStreamBuffers
   ]);
@@ -683,7 +706,7 @@ export function SessionRoute() {
 
   if (!session) {
     return (
-      <main className="page-shell">
+      <main className="page-shell" data-testid="app-shell-content">
         {bootLoading ? "세션 로딩 중..." : null}
         {!bootLoading && bootError ? (
           <section className="card session-alert session-alert-error">
@@ -712,7 +735,7 @@ export function SessionRoute() {
   }
 
   return (
-    <main className="page-shell session-page">
+    <main className="page-shell session-page" data-testid="app-shell-content">
       {!aiStatus.connected ? (
         <section className="card session-alert session-alert-error">
           <strong>AI 에이전트 연결 실패</strong>
@@ -726,7 +749,9 @@ export function SessionRoute() {
           <h1 className="page-title">학습 세션</h1>
         </div>
         <div className="session-header-actions">
-          <strong className="session-progress-pill">{progressText}</strong>
+          <strong className="session-progress-pill">
+            {progressText || formatLearningProgress(learningProgressPage)}
+          </strong>
           <button className="btn" onClick={handleSaveAndExit}>
             저장 및 종료
           </button>
@@ -781,6 +806,32 @@ export function SessionRoute() {
               </div>
             </div>
           ) : null}
+          <div className="session-chat-head" aria-label="AI Tutor">
+            <span className="session-chat-head-icon" aria-hidden="true">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+                <path
+                  d="M12 3l1.7 4.6L18 9.3l-4.3 1.7L12 16l-1.7-5L6 9.3l4.3-1.7L12 3Z"
+                  stroke="currentColor"
+                  strokeWidth="1.8"
+                  strokeLinejoin="round"
+                />
+                <path
+                  d="M19 14l.8 2.2L22 17l-2.2.8L19 20l-.8-2.2L16 17l2.2-.8L19 14Z"
+                  stroke="currentColor"
+                  strokeWidth="1.6"
+                  strokeLinejoin="round"
+                />
+              </svg>
+            </span>
+            <h2>AI Tutor</h2>
+            <div className="session-learning-progress" aria-label="학습 진행률">
+              <span>학습 진행률</span>
+              <span className="session-learning-progress-track" aria-hidden="true">
+                <span style={{ width: `${learningProgressRatio * 100}%` }} />
+              </span>
+              <strong>{learningProgressPage} / {lectureNumPages} page</strong>
+            </div>
+          </div>
           <ChatPanel
             messages={mergedMessages}
             onQuizTypeSelect={handleQuizTypeSelect}
